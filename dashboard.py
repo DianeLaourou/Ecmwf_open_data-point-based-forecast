@@ -17,6 +17,21 @@ import io
 import sys
 import os
 from datetime import datetime, timedelta
+import pytz
+
+# ── Fuseau horaire Bénin UTC+1 ────────────────────────────────────────────────
+TZ_BENIN   = pytz.timezone("Africa/Porto-Novo")
+UTC_OFFSET = timedelta(hours=1)
+
+def now_local() -> datetime:
+    return datetime.now(tz=TZ_BENIN).replace(tzinfo=None)
+
+# ── URL CSV GitHub ────────────────────────────────────────────────────────────
+GITHUB_CSV_URL = (
+    "https://raw.githubusercontent.com/"
+    "DianeLaourou/Ecmwf_open_data-point-based-forecast/"
+    "main/latest_forecast.csv"
+)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # CONFIG PAGE
@@ -399,7 +414,7 @@ def generate_demo_data() -> pd.DataFrame:
 def load_pipeline_data(run_date, run_hour, swh_source):
     try:
         sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-        import config, extractor          # modules du dépôt local
+        import config, extractor
         from datetime import datetime as _dt
         run_dt = _dt.strptime(f"{run_date} {run_hour:02d}:00", "%Y-%m-%d %H:%M")
         if swh_source:
@@ -408,7 +423,21 @@ def load_pipeline_data(run_date, run_hour, swh_source):
         df_cop   = extractor.extract_copernicus(run_dt)
         df       = extractor.merge_sources(df_ecmwf, df_cop)
         df["valid_local"] = pd.to_datetime(df["valid_local"])
-        return df, None
+        return clean_df(df), None
+    except Exception as e:
+        return None, str(e)
+
+
+@st.cache_data(ttl=1800, show_spinner=False)
+def load_github_csv():
+    """Lit latest_forecast.csv depuis GitHub (données réelles pipeline)."""
+    try:
+        import urllib.request, io as _io
+        with urllib.request.urlopen(GITHUB_CSV_URL, timeout=15) as resp:
+            content = resp.read().decode("utf-8")
+        df = pd.read_csv(_io.StringIO(content))
+        df["valid_local"] = pd.to_datetime(df["valid_local"]) + UTC_OFFSET
+        return clean_df(df), None
     except Exception as e:
         return None, str(e)
 
@@ -1006,7 +1035,10 @@ def main():
 
     params = render_sidebar()
 
-    # Chargement données
+    # ── Chargement données ────────────────────────────────────
+    is_demo   = False
+    is_github = False
+
     if params["data_source"] == T("data_live"):
         with st.spinner(T("spinner_live")):
             df, err = load_pipeline_data(params["run_date"], params["run_hour"], params["swh_source"])
@@ -1017,7 +1049,16 @@ def main():
         else:
             is_demo = False
     else:
-        df, is_demo = generate_demo_data(), True
+        # Essayer GitHub CSV en priorité
+        df_gh, err_gh = load_github_csv()
+        if df_gh is not None and not df_gh.empty:
+            df        = df_gh
+            is_github = True
+        else:
+            df      = generate_demo_data()
+            is_demo = True
+            if err_gh:
+                st.caption(f"ℹ️ CSV GitHub non disponible ({err_gh}) — données démo affichées.")
 
     # Filtre temporel
     df_filtered = df[
@@ -1046,21 +1087,23 @@ def main():
             st.success(word_info)
 
     # Header
-    now_local  = datetime.now()
-    demo_badge = (f" · <span style='color:#ffa94d;font-size:0.7rem;'>{T('header_demo_badge')}</span>"
-                  if is_demo else "")
-    corr_badge = (f" · <span style='color:#69db7c;font-size:0.7rem;'>{T('word_corrected_badge')}</span>"
-                  if is_corrected else "")
+    now_loc      = now_local()
+    demo_badge   = (f" · <span style='color:#ffa94d;font-size:0.7rem;'>{T('header_demo_badge')}</span>"
+                    if is_demo else "")
+    github_badge = (f" · <span style='color:#69db7c;font-size:0.7rem;'>✅ PIPELINE</span>"
+                    if is_github else "")
+    corr_badge   = (f" · <span style='color:#69db7c;font-size:0.7rem;'>{T('word_corrected_badge')}</span>"
+                    if is_corrected else "")
     st.markdown(f"""
     <div class="marine-header">
         <div style="font-size:3rem;">🌊</div>
         <div>
             <div class="subtitle">METEO-BENIN · DPROM / SPAM</div>
-            <h1>{T('header_title')}{demo_badge}{corr_badge}</h1>
+            <h1>{T('header_title')}{demo_badge}{github_badge}{corr_badge}</h1>
             <div style="color:#adb5bd;font-size:0.78rem;margin-top:0.2rem;">
                 📍 6.22°N, 2.63°E · Golfe de Guinée, Bénin &nbsp;|&nbsp;
                 {T('header_source')} &nbsp;|&nbsp;
-                {T('header_updated')} : {now_local.strftime('%d/%m/%Y %H:%M')}
+                {T('header_updated')} : {now_loc.strftime('%d/%m/%Y %H:%M')} (UTC+1)
             </div>
         </div>
     </div>""", unsafe_allow_html=True)

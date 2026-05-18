@@ -389,7 +389,7 @@ def generate_demo_data() -> pd.DataFrame:
         "cur_dir":        150 + 30*np.sin(t*0.7) + np.random.normal(0,5,n),
     })
     df["valid_local"] = pd.to_datetime(df["valid_local"])
-    return df
+    return clean_df(df)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -542,6 +542,20 @@ def get_alert_level(df):
         return T("alert_normal"),  "warning-none",   f"{T('warn_none')}    SWH max {swh_max:.1f} m — {T('kpi_wind')} {wind_max:.0f} kt."
 
 
+def clean_df(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Force toutes les colonnes numériques en float64 natif numpy.
+    Nécessaire pour pandas 3.x / ArrowDtype sur Streamlit Cloud.
+    """
+    df = df.copy()
+    for col in df.columns:
+        if col == "valid_local":
+            df[col] = pd.to_datetime(df[col])
+        else:
+            df[col] = pd.to_numeric(df[col], errors="coerce").astype("float64")
+    return df
+
+
 def plotly_theme():
     return dict(
         paper_bgcolor="rgba(10,22,40,0)", plot_bgcolor="rgba(13,34,64,0.5)",
@@ -608,34 +622,29 @@ def make_wind_rose(df):
     if "wind10_dir" not in df.columns or "wind10_spd_kt" not in df.columns:
         return go.Figure()
     labels = ["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSO","SO","OSO","O","ONO","NO","NNO"]
-    bins   = np.arange(0, 361, 22.5, dtype=float)
-    # Forcer float pour éviter TypeError avec pandas ArrowDtype
-    dirs   = df["wind10_dir"].dropna().astype(float).to_numpy()
-    speeds = df["wind10_spd_kt"].dropna().astype(float).to_numpy()
-    ml     = min(len(dirs), len(speeds))
-    dirs, speeds = dirs[:ml], speeds[:ml]
-    sbins   = [0, 5, 10, 15, 20, 100]
-    slabels = ["0–5 kt","5–10 kt","10–15 kt","15–20 kt",">20 kt"]
-    colors  = ["#74c0fc","#15aabf","#69db7c","#ffa94d","#ff6b6b"]
+    bins   = np.arange(0,361,22.5)
+    dirs   = df["wind10_dir"].dropna().values
+    speeds = df["wind10_spd_kt"].dropna().values
+    ml     = min(len(dirs),len(speeds))
+    dirs,speeds = dirs[:ml],speeds[:ml]
+    sbins  = [0,5,10,15,20,100]
+    slabels= ["0–5 kt","5–10 kt","10–15 kt","15–20 kt",">20 kt"]
+    colors = ["#74c0fc","#15aabf","#69db7c","#ffa94d","#ff6b6b"]
     fig = go.Figure()
-    for j, (smin, smax) in enumerate(zip(sbins[:-1], sbins[1:])):
-        mask   = (speeds >= float(smin)) & (speeds < float(smax))
+    for j,(smin,smax) in enumerate(zip(sbins[:-1],sbins[1:])):
+        mask   = (speeds>=smin)&(speeds<smax)
         d      = dirs[mask]
-        counts = [int(np.sum((d >= bins[k]) & (d < (bins[k+1] if k < 15 else 360.0))))
-                  for k in range(16)]
-        fig.add_trace(go.Barpolar(r=counts, theta=labels, name=slabels[j],
-            marker_color=colors[j], marker_line_color="rgba(10,22,40,0.5)",
-            marker_line_width=0.5, opacity=0.85))
+        counts = [np.sum((d>=bins[k])&(d<(bins[k+1] if k<15 else 360))) for k in range(16)]
+        fig.add_trace(go.Barpolar(r=counts,theta=labels,name=slabels[j],
+            marker_color=colors[j],marker_line_color="rgba(10,22,40,0.5)",marker_line_width=0.5,opacity=0.85))
     th = plotly_theme()
     fig.update_layout(
         polar=dict(bgcolor="rgba(13,34,64,0.6)",
-            radialaxis=dict(showticklabels=True, ticks="", gridcolor="rgba(21,170,191,0.2)",
-                            tickfont=dict(color="#adb5bd", size=9)),
-            angularaxis=dict(direction="clockwise", gridcolor="rgba(21,170,191,0.15)",
-                             tickfont=dict(color="#e9ecef", size=11))),
-        paper_bgcolor=th["paper_bgcolor"], font=th["font"], legend=th["legend"],
-        margin=dict(l=40, r=40, t=50, b=40), height=380,
-        title=dict(text=T("wind_rose_title"), font=dict(color="#69db7c", size=13)))
+            radialaxis=dict(showticklabels=True,ticks="",gridcolor="rgba(21,170,191,0.2)",tickfont=dict(color="#adb5bd",size=9)),
+            angularaxis=dict(direction="clockwise",gridcolor="rgba(21,170,191,0.15)",tickfont=dict(color="#e9ecef",size=11))),
+        paper_bgcolor=th["paper_bgcolor"],font=th["font"],legend=th["legend"],
+        margin=dict(l=40,r=40,t=50,b=40),height=380,
+        title=dict(text=T("wind_rose_title"),font=dict(color="#69db7c",size=13)))
     return fig
 
 
@@ -645,10 +654,8 @@ def make_swell_compass(df):
     for sw,col,hkey in [("sw1_dir","#339af0","sw1_ht_m"),("sw2_dir","#74c0fc","sw2_ht_m")]:
         if sw not in df.columns or hkey not in df.columns: continue
         label = VAR_META[hkey][lang]["short"]
-        r_vals     = df[hkey].fillna(0).astype(float).to_numpy()
-        theta_vals = df[sw].fillna(0).astype(float).to_numpy()
-        fig.add_trace(go.Scatterpolar(r=r_vals, theta=theta_vals,
-            mode="markers", name=label,
+        fig.add_trace(go.Scatterpolar(r=df[hkey].fillna(0),theta=df[sw].fillna(0),
+            mode="markers",name=label,
             marker=dict(color=col,size=8,opacity=0.8,line=dict(color="white",width=0.5)),
             hovertemplate="Dir: %{theta:.0f}°<br>Ht: %{r:.2f} m<extra></extra>"))
     th = plotly_theme()

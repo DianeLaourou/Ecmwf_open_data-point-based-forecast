@@ -16,27 +16,14 @@ from plotly.subplots import make_subplots
 import io
 import sys
 import os
-from datetime import datetime, timedelta, timezone, time as dtime
-import pytz
-
-# Fuseau horaire Bénin — UTC+1 (fixe, pas de changement d'heure)
-TZ_BENIN = pytz.timezone("Africa/Porto-Novo")
-UTC_OFFSET = timedelta(hours=1)
-
-def now_local() -> datetime:
-    """Heure locale courante au Bénin (UTC+1)."""
-    return datetime.now(tz=TZ_BENIN).replace(tzinfo=None)
-
-def to_local(dt) -> pd.Timestamp:
-    """Convertit un Timestamp UTC en heure locale Bénin (UTC+1)."""
-    return pd.Timestamp(dt) + UTC_OFFSET
+from datetime import datetime, timedelta
 
 # ─────────────────────────────────────────────────────────────────────────────
 # CONFIG PAGE
 # ─────────────────────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="Marine Forecast — Sème | METEO-BENIN",
-    page_icon="https://raw.githubusercontent.com/DianeLaourou/Ecmwf_open_data-point-based-forecast/main/logo_meteo_oval.png",
+    page_icon="🌊",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -374,8 +361,7 @@ def thresh_name(th: dict) -> str:
 @st.cache_data(ttl=3600)
 def generate_demo_data() -> pd.DataFrame:
     np.random.seed(42)
-    # Heure locale Bénin (UTC+1)
-    now   = now_local().replace(minute=0, second=0, microsecond=0)
+    now   = datetime.now().replace(minute=0, second=0, microsecond=0)
     times = [now - timedelta(hours=6*i) for i in range(9, -21, -1)]
     n     = len(times)
     t     = np.linspace(0, 2*np.pi, n)
@@ -422,34 +408,6 @@ def load_pipeline_data(run_date, run_hour, swh_source):
         df_cop   = extractor.extract_copernicus(run_dt)
         df       = extractor.merge_sources(df_ecmwf, df_cop)
         df["valid_local"] = pd.to_datetime(df["valid_local"])
-        return df, None
-    except Exception as e:
-        return None, str(e)
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# LECTURE DU CSV DEPUIS GITHUB (données réelles du pipeline)
-# ─────────────────────────────────────────────────────────────────────────────
-GITHUB_CSV_URL = (
-    "https://raw.githubusercontent.com/"
-    "DianeLaourou/Ecmwf_open_data-point-based-forecast/"
-    "main/latest_forecast.csv"
-)
-
-@st.cache_data(ttl=1800, show_spinner=False)   # rafraîchit toutes les 30 min
-def load_github_csv() -> tuple[pd.DataFrame | None, str | None]:
-    """
-    Lit latest_forecast.csv depuis le dépôt GitHub.
-    Retourne (df, None) si succès, (None, error_msg) si échec.
-    Les heures dans valid_local sont supposées UTC → converties en UTC+1.
-    """
-    try:
-        import urllib.request
-        with urllib.request.urlopen(GITHUB_CSV_URL, timeout=15) as resp:
-            content = resp.read().decode("utf-8")
-        import io as _io
-        df = pd.read_csv(_io.StringIO(content))
-        df["valid_local"] = pd.to_datetime(df["valid_local"]) + UTC_OFFSET
         return df, None
     except Exception as e:
         return None, str(e)
@@ -650,29 +608,34 @@ def make_wind_rose(df):
     if "wind10_dir" not in df.columns or "wind10_spd_kt" not in df.columns:
         return go.Figure()
     labels = ["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSO","SO","OSO","O","ONO","NO","NNO"]
-    bins   = np.arange(0,361,22.5)
-    dirs   = df["wind10_dir"].dropna().values
-    speeds = df["wind10_spd_kt"].dropna().values
-    ml     = min(len(dirs),len(speeds))
-    dirs,speeds = dirs[:ml],speeds[:ml]
-    sbins  = [0,5,10,15,20,100]
-    slabels= ["0–5 kt","5–10 kt","10–15 kt","15–20 kt",">20 kt"]
-    colors = ["#74c0fc","#15aabf","#69db7c","#ffa94d","#ff6b6b"]
+    bins   = np.arange(0, 361, 22.5, dtype=float)
+    # Forcer float pour éviter TypeError avec pandas ArrowDtype
+    dirs   = df["wind10_dir"].dropna().astype(float).to_numpy()
+    speeds = df["wind10_spd_kt"].dropna().astype(float).to_numpy()
+    ml     = min(len(dirs), len(speeds))
+    dirs, speeds = dirs[:ml], speeds[:ml]
+    sbins   = [0, 5, 10, 15, 20, 100]
+    slabels = ["0–5 kt","5–10 kt","10–15 kt","15–20 kt",">20 kt"]
+    colors  = ["#74c0fc","#15aabf","#69db7c","#ffa94d","#ff6b6b"]
     fig = go.Figure()
-    for j,(smin,smax) in enumerate(zip(sbins[:-1],sbins[1:])):
-        mask   = (speeds>=smin)&(speeds<smax)
+    for j, (smin, smax) in enumerate(zip(sbins[:-1], sbins[1:])):
+        mask   = (speeds >= float(smin)) & (speeds < float(smax))
         d      = dirs[mask]
-        counts = [np.sum((d>=bins[k])&(d<(bins[k+1] if k<15 else 360))) for k in range(16)]
-        fig.add_trace(go.Barpolar(r=counts,theta=labels,name=slabels[j],
-            marker_color=colors[j],marker_line_color="rgba(10,22,40,0.5)",marker_line_width=0.5,opacity=0.85))
+        counts = [int(np.sum((d >= bins[k]) & (d < (bins[k+1] if k < 15 else 360.0))))
+                  for k in range(16)]
+        fig.add_trace(go.Barpolar(r=counts, theta=labels, name=slabels[j],
+            marker_color=colors[j], marker_line_color="rgba(10,22,40,0.5)",
+            marker_line_width=0.5, opacity=0.85))
     th = plotly_theme()
     fig.update_layout(
         polar=dict(bgcolor="rgba(13,34,64,0.6)",
-            radialaxis=dict(showticklabels=True,ticks="",gridcolor="rgba(21,170,191,0.2)",tickfont=dict(color="#adb5bd",size=9)),
-            angularaxis=dict(direction="clockwise",gridcolor="rgba(21,170,191,0.15)",tickfont=dict(color="#e9ecef",size=11))),
-        paper_bgcolor=th["paper_bgcolor"],font=th["font"],legend=th["legend"],
-        margin=dict(l=40,r=40,t=50,b=40),height=380,
-        title=dict(text=T("wind_rose_title"),font=dict(color="#69db7c",size=13)))
+            radialaxis=dict(showticklabels=True, ticks="", gridcolor="rgba(21,170,191,0.2)",
+                            tickfont=dict(color="#adb5bd", size=9)),
+            angularaxis=dict(direction="clockwise", gridcolor="rgba(21,170,191,0.15)",
+                             tickfont=dict(color="#e9ecef", size=11))),
+        paper_bgcolor=th["paper_bgcolor"], font=th["font"], legend=th["legend"],
+        margin=dict(l=40, r=40, t=50, b=40), height=380,
+        title=dict(text=T("wind_rose_title"), font=dict(color="#69db7c", size=13)))
     return fig
 
 
@@ -682,8 +645,10 @@ def make_swell_compass(df):
     for sw,col,hkey in [("sw1_dir","#339af0","sw1_ht_m"),("sw2_dir","#74c0fc","sw2_ht_m")]:
         if sw not in df.columns or hkey not in df.columns: continue
         label = VAR_META[hkey][lang]["short"]
-        fig.add_trace(go.Scatterpolar(r=df[hkey].fillna(0),theta=df[sw].fillna(0),
-            mode="markers",name=label,
+        r_vals     = df[hkey].fillna(0).astype(float).to_numpy()
+        theta_vals = df[sw].fillna(0).astype(float).to_numpy()
+        fig.add_trace(go.Scatterpolar(r=r_vals, theta=theta_vals,
+            mode="markers", name=label,
             marker=dict(color=col,size=8,opacity=0.8,line=dict(color="white",width=0.5)),
             hovertemplate="Dir: %{theta:.0f}°<br>Ht: %{r:.2f} m<extra></extra>"))
     th = plotly_theme()
@@ -774,23 +739,21 @@ def render_sidebar():
         _df_b   = generate_demo_data()
         _dt_min = _df_b["valid_local"].min().to_pydatetime()
         _dt_max = _df_b["valid_local"].max().to_pydatetime()
-
-        # Toutes les heures 00→23 en H24
-        _all_hours = list(range(24))
+        _times  = sorted(_df_b["valid_local"].dt.to_pydatetime().tolist())
 
         col_a, col_b = st.columns(2)
         with col_a:
             start_date = st.date_input(T("date_from"), value=_dt_min.date(),
                 min_value=_dt_min.date(), max_value=_dt_max.date(), key="sd")
-            start_hour = st.selectbox(T("hour_from"), _all_hours,
-                format_func=lambda h: f"{h:02d}:00",
-                index=_dt_min.hour, key="sh")
+            _hs = sorted({t.hour for t in _times if t.date()==start_date}) or list(range(0,24,6))
+            start_hour = st.selectbox(T("hour_from"), _hs,
+                format_func=lambda h: f"{h:02d}:00", index=0, key="sh")
         with col_b:
             end_date = st.date_input(T("date_to"), value=_dt_max.date(),
                 min_value=_dt_min.date(), max_value=_dt_max.date(), key="ed")
-            end_hour = st.selectbox(T("hour_to"), _all_hours,
-                format_func=lambda h: f"{h:02d}:00",
-                index=_dt_max.hour, key="eh")
+            _he = sorted({t.hour for t in _times if t.date()==end_date}) or list(range(0,24,6))
+            end_hour = st.selectbox(T("hour_to"), _he,
+                format_func=lambda h: f"{h:02d}:00", index=len(_he)-1, key="eh")
 
         from datetime import datetime as _dt2
         time_start = _dt2.combine(start_date, _dt2.min.time()).replace(hour=start_hour)
@@ -971,7 +934,7 @@ def render_main_tabs(df, df_filtered, params):
 
     # Exports
     with tab_export:
-        ts = now_local().strftime('%Y%m%d_%H%M')
+        ts = datetime.now().strftime('%Y%m%d_%H%M')
         st.markdown(f'<div class="section-title">{T("export_data_title")}</div>', unsafe_allow_html=True)
         c1,c2,c3 = st.columns(3)
         with c1:
@@ -1036,38 +999,18 @@ def main():
 
     params = render_sidebar()
 
-    # ── Chargement des données ────────────────────────────────
-    # Priorité : 1) GitHub CSV (données réelles pipeline)
-    #            2) Pipeline live (local, si sélectionné)
-    #            3) Données démo (fallback)
-
-    is_demo   = False
-    is_github = False
-
+    # Chargement données
     if params["data_source"] == T("data_live"):
-        # Tentative pipeline local (rare — nécessite xarray/cfgrib)
         with st.spinner(T("spinner_live")):
-            df, err = load_pipeline_data(
-                params["run_date"], params["run_hour"], params["swh_source"])
+            df, err = load_pipeline_data(params["run_date"], params["run_hour"], params["swh_source"])
         if err:
             st.error(f"{T('err_pipeline')} : {err}")
             st.info(T("info_fallback"))
             df, is_demo = generate_demo_data(), True
         else:
             is_demo = False
-
     else:
-        # Essayer de lire le CSV GitHub (données réelles du pipeline)
-        df_gh, err_gh = load_github_csv()
-        if df_gh is not None and not df_gh.empty:
-            df        = df_gh
-            is_github = True
-        else:
-            # Fallback démo si pas encore de CSV sur GitHub
-            df      = generate_demo_data()
-            is_demo = True
-            if err_gh:
-                st.caption(f"ℹ️ CSV GitHub non disponible ({err_gh}) — données démo affichées.")
+        df, is_demo = generate_demo_data(), True
 
     # Filtre temporel
     df_filtered = df[
@@ -1096,23 +1039,21 @@ def main():
             st.success(word_info)
 
     # Header
-    now_loc   = now_local()
-    demo_badge   = (f" · <span style='color:#ffa94d;font-size:0.7rem;'>{T('header_demo_badge')}</span>"
-                    if is_demo else "")
-    github_badge = (f" · <span style='color:#69db7c;font-size:0.7rem;'>✅ PIPELINE</span>"
-                    if is_github else "")
-    corr_badge   = (f" · <span style='color:#69db7c;font-size:0.7rem;'>{T('word_corrected_badge')}</span>"
-                    if is_corrected else "")
+    now_local  = datetime.now()
+    demo_badge = (f" · <span style='color:#ffa94d;font-size:0.7rem;'>{T('header_demo_badge')}</span>"
+                  if is_demo else "")
+    corr_badge = (f" · <span style='color:#69db7c;font-size:0.7rem;'>{T('word_corrected_badge')}</span>"
+                  if is_corrected else "")
     st.markdown(f"""
     <div class="marine-header">
         <div style="font-size:3rem;">🌊</div>
         <div>
             <div class="subtitle">METEO-BENIN · DPROM / SPAM</div>
-            <h1>{T('header_title')}{demo_badge}{github_badge}{corr_badge}</h1>
+            <h1>{T('header_title')}{demo_badge}{corr_badge}</h1>
             <div style="color:#adb5bd;font-size:0.78rem;margin-top:0.2rem;">
                 📍 6.22°N, 2.63°E · Golfe de Guinée, Bénin &nbsp;|&nbsp;
                 {T('header_source')} &nbsp;|&nbsp;
-                {T('header_updated')} : {now_loc.strftime('%d/%m/%Y %H:%M')} (UTC+1)
+                {T('header_updated')} : {now_local.strftime('%d/%m/%Y %H:%M')}
             </div>
         </div>
     </div>""", unsafe_allow_html=True)

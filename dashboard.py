@@ -1,14 +1,10 @@
 """
 =============================================================================
-dashboard.py — Dashboard Streamlit de Prévision Marine
+dashboard.py — Dashboard Streamlit de Prévision Marine / Marine Forecast Dashboard
 Point Sème (6.22°N, 2.63°E) — Golfe de Guinée, Bénin
 
 METEO-BENIN / DPROM / SPAM
 Auteur : LAOUROU MAKONDJOU DIANE
-=============================================================================
-Usage :
-    streamlit run dashboard.py
-    streamlit run dashboard.py -- --swh ecmwf
 =============================================================================
 """
 
@@ -16,11 +12,8 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
-import plotly.express as px
 from plotly.subplots import make_subplots
 import io
-import base64
-import argparse
 import sys
 import os
 from datetime import datetime, timedelta
@@ -29,428 +22,368 @@ from datetime import datetime, timedelta
 # CONFIG PAGE
 # ─────────────────────────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="Prévision Marine — Sème | METEO-BENIN",
+    page_title="Marine Forecast — Sème | METEO-BENIN",
     page_icon="🌊",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
 # ─────────────────────────────────────────────────────────────────────────────
-# CSS PERSONNALISÉ
+# TRADUCTIONS / TRANSLATIONS
+# ─────────────────────────────────────────────────────────────────────────────
+TRANSLATIONS = {
+    "FR": {
+        "lang_label":        "🌐 Langue / Language",
+        "settings":          "⚙️ Paramètres",
+        "data_source_label": "Source de données",
+        "data_demo":         "🎲 Données démo",
+        "data_live":         "🔗 Pipeline en direct",
+        "ecmwf_run_title":   "### 📅 Date du run ECMWF",
+        "date_label":        "Date",
+        "hour_utc":          "Heure UTC",
+        "swh_source":        "Source SWH",
+        "vars_title":        "## 📊 Variables à visualiser",
+        "period_title":      "## 🗓️ Période",
+        "date_from":         "📅 Du",
+        "date_to":           "📅 Au",
+        "hour_from":         "🕐 Heure début",
+        "hour_to":           "🕐 Heure fin",
+        "display_title":     "## 🎨 Options d'affichage",
+        "show_markers":      "Marqueurs sur courbes",
+        "show_thresh":       "Seuils d'alerte",
+        "chart_type":        "Type principal",
+        "chart_types":       ["Séries temporelles", "Aire empilée"],
+        "footer_copy":       "© 2026 LAOUROU M. DIANE",
+        "grp_waves":         "🌊 Vagues",
+        "grp_wind":          "💨 Vent",
+        "grp_pres":          "🔴 Pression / Temp",
+        "grp_other":         "🌫️ Autres",
+        "kpi_swh":           "SWH Max",
+        "kpi_wind":          "Vent Max",
+        "kpi_gust":          "Rafale Max",
+        "kpi_mslp":          "MSLP Min",
+        "kpi_sst":           "SST Moy",
+        "kpi_rain":          "Précip Max",
+        "alert_danger":      "🔴 DANGER",
+        "alert_caution":     "🟡 PRUDENCE",
+        "alert_normal":      "🟢 NORMAL",
+        "warn_danger":       "Conditions dangereuses attendues.",
+        "warn_caution":      "Conditions modérées. Prudence recommandée.",
+        "warn_none":         "Warning : Aucune. Conditions clémentes.",
+        "tab_ts":            "📈 Séries temporelles",
+        "tab_wind":          "💨 Vent & Rose",
+        "tab_swell":         "🌊 Swell & Courants",
+        "tab_corr":          "🔗 Corrélations",
+        "tab_data":          "📋 Données brutes",
+        "tab_export":        "💾 Exports",
+        "select_var_hint":   "👈 Sélectionnez au moins une variable dans la barre latérale.",
+        "wind_speed_title":  "Vitesses de vent",
+        "wind_dir_title":    "Direction du vent 10m (°)",
+        "wave_height_title": "Hauteurs de houle",
+        "swell_dir_title":   "Direction & Hauteur Swell",
+        "swell_per_title":   "Périodes de swell",
+        "current_title":     "Courants marins",
+        "corr_title":        "Matrice de Corrélation",
+        "scatter_title":     "Nuage de points personnalisé",
+        "axis_x":            "Axe X",
+        "axis_y":            "Axe Y",
+        "rows_cols":         "lignes × colonnes",
+        "export_data_title": "Exporter les données filtrées",
+        "export_png_title":  "Exporter les graphiques (PNG)",
+        "export_csv":        "⬇️ Export CSV (;)",
+        "export_xlsx":       "⬇️ Export Excel (.xlsx)",
+        "export_json":       "⬇️ Export JSON",
+        "export_png":        "⬇️ Graphique (PNG)",
+        "export_png_warn":   "Export PNG non disponible (kaleido manquant)",
+        "bulletin_title":    "### 📋 Bulletin de synthèse",
+        "bulletin_dl":       "⬇️ Télécharger le bulletin (.txt)",
+        "bulletin_textarea": "Bulletin texte",
+        "spinner_live":      "⏳ Lancement du pipeline ECMWF/Copernicus...",
+        "err_pipeline":      "❌ Erreur pipeline",
+        "info_fallback":     "💡 Passage aux données de démonstration.",
+        "header_title":      "Prévision Marine — Sème",
+        "header_demo_badge": "🎲 DONNÉES DÉMO",
+        "header_source":     "Source : ECMWF Open Data + Copernicus Marine",
+        "header_updated":    "Mise à jour",
+        "bul_header":        "BULLETIN DE PRÉVISION MARINE — SÈME (6.22°N, 2.63°E)",
+        "bul_generated":     "Généré le",
+        "bul_period":        "Période",
+        "bul_alert":         "NIVEAU D'ALERTE",
+        "bul_stats":         "STATISTIQUES CLÉS",
+        "bul_swh":           "SWH    max",
+        "bul_wind":          "Vent   max",
+        "bul_gust":          "Rafale max",
+        "bul_mslp":          "MSLP   min",
+        "bul_sst":           "SST    moy",
+        "bul_source":        "Source : ECMWF Open Data + Copernicus Marine Service",
+        "bul_author":        "Auteur : LAOUROU MAKONDJOU DIANE",
+        "wind_rose_title":   "Rose des Vents 10m",
+        "time_label":        "Temps",
+        "forecast_title":    "Prévisions — Sème",
+    },
+    "EN": {
+        "lang_label":        "🌐 Language / Langue",
+        "settings":          "⚙️ Settings",
+        "data_source_label": "Data source",
+        "data_demo":         "🎲 Demo data",
+        "data_live":         "🔗 Live pipeline",
+        "ecmwf_run_title":   "### 📅 ECMWF Run Date",
+        "date_label":        "Date",
+        "hour_utc":          "UTC Hour",
+        "swh_source":        "SWH source",
+        "vars_title":        "## 📊 Variables to display",
+        "period_title":      "## 🗓️ Time Period",
+        "date_from":         "📅 From",
+        "date_to":           "📅 To",
+        "hour_from":         "🕐 Start hour",
+        "hour_to":           "🕐 End hour",
+        "display_title":     "## 🎨 Display options",
+        "show_markers":      "Markers on curves",
+        "show_thresh":       "Alert thresholds",
+        "chart_type":        "Main chart type",
+        "chart_types":       ["Time series", "Stacked area"],
+        "footer_copy":       "© 2026 LAOUROU M. DIANE",
+        "grp_waves":         "🌊 Waves",
+        "grp_wind":          "💨 Wind",
+        "grp_pres":          "🔴 Pressure / Temp",
+        "grp_other":         "🌫️ Other",
+        "kpi_swh":           "SWH Max",
+        "kpi_wind":          "Wind Max",
+        "kpi_gust":          "Gust Max",
+        "kpi_mslp":          "MSLP Min",
+        "kpi_sst":           "SST Avg",
+        "kpi_rain":          "Rain Max",
+        "alert_danger":      "🔴 DANGER",
+        "alert_caution":     "🟡 CAUTION",
+        "alert_normal":      "🟢 NORMAL",
+        "warn_danger":       "Dangerous conditions expected.",
+        "warn_caution":      "Moderate conditions. Caution advised.",
+        "warn_none":         "Warning: None. Calm conditions.",
+        "tab_ts":            "📈 Time Series",
+        "tab_wind":          "💨 Wind & Rose",
+        "tab_swell":         "🌊 Swell & Currents",
+        "tab_corr":          "🔗 Correlations",
+        "tab_data":          "📋 Raw Data",
+        "tab_export":        "💾 Exports",
+        "select_var_hint":   "👈 Please select at least one variable in the sidebar.",
+        "wind_speed_title":  "Wind speeds",
+        "wind_dir_title":    "Wind direction 10m (°)",
+        "wave_height_title": "Wave heights",
+        "swell_dir_title":   "Swell Direction & Height",
+        "swell_per_title":   "Swell periods",
+        "current_title":     "Marine currents",
+        "corr_title":        "Correlation Matrix",
+        "scatter_title":     "Custom scatter plot",
+        "axis_x":            "X Axis",
+        "axis_y":            "Y Axis",
+        "rows_cols":         "rows × columns",
+        "export_data_title": "Export filtered data",
+        "export_png_title":  "Export charts (PNG)",
+        "export_csv":        "⬇️ Export CSV (;)",
+        "export_xlsx":       "⬇️ Export Excel (.xlsx)",
+        "export_json":       "⬇️ Export JSON",
+        "export_png":        "⬇️ Chart (PNG)",
+        "export_png_warn":   "PNG export unavailable (kaleido missing)",
+        "bulletin_title":    "### 📋 Summary bulletin",
+        "bulletin_dl":       "⬇️ Download bulletin (.txt)",
+        "bulletin_textarea": "Bulletin text",
+        "spinner_live":      "⏳ Running ECMWF/Copernicus pipeline...",
+        "err_pipeline":      "❌ Pipeline error",
+        "info_fallback":     "💡 Switching to demo data.",
+        "header_title":      "Marine Forecast — Sème",
+        "header_demo_badge": "🎲 DEMO DATA",
+        "header_source":     "Source: ECMWF Open Data + Copernicus Marine",
+        "header_updated":    "Updated",
+        "bul_header":        "MARINE FORECAST BULLETIN — SÈME (6.22°N, 2.63°E)",
+        "bul_generated":     "Generated on",
+        "bul_period":        "Period",
+        "bul_alert":         "ALERT LEVEL",
+        "bul_stats":         "KEY STATISTICS",
+        "bul_swh":           "SWH    max",
+        "bul_wind":          "Wind   max",
+        "bul_gust":          "Gust   max",
+        "bul_mslp":          "MSLP   min",
+        "bul_sst":           "SST    avg",
+        "bul_source":        "Source: ECMWF Open Data + Copernicus Marine Service",
+        "bul_author":        "Author: LAOUROU MAKONDJOU DIANE",
+        "wind_rose_title":   "Wind Rose 10m",
+        "time_label":        "Time",
+        "forecast_title":    "Forecast — Sème",
+    },
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# MÉTADONNÉES VARIABLES (bilingues)
+# ─────────────────────────────────────────────────────────────────────────────
+ALERT_SWH_WARNING  = 1.6
+ALERT_SWH_DANGER   = 2.0
+ALERT_WIND_WARNING = 15
+ALERT_WIND_DANGER  = 20
+
+VAR_META = {
+    "swh_m":         {"FR": {"label": "Hauteur significative des vagues (SWH)", "short": "SWH",          "group": "grp_waves"},
+                      "EN": {"label": "Significant Wave Height (SWH)",          "short": "SWH",          "group": "grp_waves"},
+                      "unit":"m",   "color":"#15aabf","icon":"🌊",
+                      "thresholds":[{"value":1.6,"color":"rgba(245,159,0,0.3)","dash":"dash",   "name_FR":"Prudence 1.6m","name_EN":"Caution 1.6m"},
+                                    {"value":2.0,"color":"rgba(224,49,49,0.5)","dash":"dashdot","name_FR":"Danger 2.0m",  "name_EN":"Danger 2.0m"}]},
+    "sw1_ht_m":      {"FR": {"label": "Hauteur Swell 1", "short": "Swell 1","group":"grp_waves"},
+                      "EN": {"label": "Swell 1 Height",  "short": "Swell 1","group":"grp_waves"},
+                      "unit":"m","color":"#339af0","icon":"🌊","thresholds":[]},
+    "sw2_ht_m":      {"FR": {"label": "Hauteur Swell 2", "short": "Swell 2","group":"grp_waves"},
+                      "EN": {"label": "Swell 2 Height",  "short": "Swell 2","group":"grp_waves"},
+                      "unit":"m","color":"#74c0fc","icon":"🌊","thresholds":[]},
+    "sw1_period_s":  {"FR": {"label": "Période Swell 1",  "short": "Période Sw1","group":"grp_waves"},
+                      "EN": {"label": "Swell 1 Period",   "short": "Period Sw1", "group":"grp_waves"},
+                      "unit":"s","color":"#a5d8ff","icon":"⏱️","thresholds":[]},
+    "sw2_period_s":  {"FR": {"label": "Période Swell 2",  "short": "Période Sw2","group":"grp_waves"},
+                      "EN": {"label": "Swell 2 Period",   "short": "Period Sw2", "group":"grp_waves"},
+                      "unit":"s","color":"#d0ebff","icon":"⏱️","thresholds":[]},
+    "wind10_spd_kt": {"FR": {"label": "Vitesse vent 10m","short":"Vent 10m", "group":"grp_wind"},
+                      "EN": {"label": "Wind speed 10m",  "short":"Wind 10m", "group":"grp_wind"},
+                      "unit":"kt","color":"#69db7c","icon":"💨",
+                      "thresholds":[{"value":15,"color":"rgba(245,159,0,0.3)","dash":"dash",   "name_FR":"15 kt","name_EN":"15 kt"},
+                                    {"value":20,"color":"rgba(224,49,49,0.5)","dash":"dashdot","name_FR":"20 kt","name_EN":"20 kt"}]},
+    "wind10_gust_kt":{"FR": {"label": "Rafales 10m",    "short":"Rafales",  "group":"grp_wind"},
+                      "EN": {"label": "Gusts 10m",       "short":"Gusts",    "group":"grp_wind"},
+                      "unit":"kt","color":"#b2f2bb","icon":"💨","thresholds":[]},
+    "wind100_spd_kt":{"FR": {"label": "Vitesse vent 100m","short":"Vent 100m","group":"grp_wind"},
+                      "EN": {"label": "Wind speed 100m", "short":"Wind 100m","group":"grp_wind"},
+                      "unit":"kt","color":"#40c057","icon":"💨","thresholds":[]},
+    "wind10_dir":    {"FR": {"label": "Direction vent 10m","short":"Dir Vent 10m","group":"grp_wind"},
+                      "EN": {"label": "Wind direction 10m","short":"Wind Dir 10m","group":"grp_wind"},
+                      "unit":"°","color":"#a9e34b","icon":"🧭","thresholds":[]},
+    "mslp_hpa":      {"FR": {"label": "Pression mer (MSLP)","short":"MSLP","group":"grp_pres"},
+                      "EN": {"label": "Sea level pressure", "short":"MSLP","group":"grp_pres"},
+                      "unit":"hPa","color":"#ffa94d","icon":"🔴",
+                      "thresholds":[{"value":1010,"color":"rgba(21,170,191,0.2)","dash":"dot","name_FR":"1010 hPa","name_EN":"1010 hPa"}]},
+    "t2m_c":         {"FR": {"label": "Température 2m",  "short":"T 2m","group":"grp_pres"},
+                      "EN": {"label": "Temperature 2m",  "short":"T 2m","group":"grp_pres"},
+                      "unit":"°C","color":"#ff6b6b","icon":"🌡️","thresholds":[]},
+    "sst_c":         {"FR": {"label": "Température surface mer (SST)","short":"SST","group":"grp_pres"},
+                      "EN": {"label": "Sea surface temperature (SST)","short":"SST","group":"grp_pres"},
+                      "unit":"°C","color":"#f06595","icon":"🌡️","thresholds":[]},
+    "vis_km":        {"FR": {"label": "Visibilité",  "short":"Visibilité","group":"grp_other"},
+                      "EN": {"label": "Visibility",  "short":"Visibility","group":"grp_other"},
+                      "unit":"km","color":"#e599f7","icon":"👁️","thresholds":[]},
+    "rain_pct":      {"FR": {"label": "Probabilité de précipitation","short":"Précip. (%)","group":"grp_other"},
+                      "EN": {"label": "Precipitation probability",   "short":"Rain (%)",   "group":"grp_other"},
+                      "unit":"%","color":"#4dabf7","icon":"🌧️",
+                      "thresholds":[{"value":50,"color":"rgba(21,170,191,0.2)","dash":"dot","name_FR":"50%","name_EN":"50%"}]},
+    "cur_spd_kt":    {"FR": {"label": "Vitesse courant marin","short":"Courant", "group":"grp_other"},
+                      "EN": {"label": "Current speed",          "short":"Current", "group":"grp_other"},
+                      "unit":"kt","color":"#cc5de8","icon":"🔄","thresholds":[]},
+    "cur_dir":       {"FR": {"label": "Direction courant marin","short":"Dir Courant","group":"grp_other"},
+                      "EN": {"label": "Current direction",      "short":"Cur Dir",   "group":"grp_other"},
+                      "unit":"°","color":"#da77f2","icon":"🧭","thresholds":[]},
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# CSS
 # ─────────────────────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
-/* ── Palette océan profond ───────────────────────────── */
-:root {
-    --ocean-dark:   #0a1628;
-    --ocean-mid:    #0d2240;
-    --ocean-blue:   #0e3a6e;
-    --ocean-teal:   #0b7285;
-    --ocean-cyan:   #15aabf;
-    --gold:         #f59f00;
-    --alert-red:    #e03131;
-    --alert-yellow: #f59f00;
-    --alert-green:  #2f9e44;
-    --text-light:   #e9ecef;
-    --text-muted:   #adb5bd;
-    --card-bg:      rgba(13, 34, 64, 0.85);
-    --border:       rgba(21, 170, 191, 0.3);
-}
-
-/* ── Fond global ─────────────────────────────────────── */
-.stApp {
-    background: linear-gradient(160deg, #0a1628 0%, #0d2240 50%, #051020 100%);
-}
-
-/* ── Header principal ────────────────────────────────── */
-.marine-header {
-    background: linear-gradient(135deg, rgba(14,58,110,0.9) 0%, rgba(11,114,133,0.7) 100%);
-    border: 1px solid var(--border);
-    border-radius: 16px;
-    padding: 1.5rem 2rem;
-    margin-bottom: 1.5rem;
-    display: flex;
-    align-items: center;
-    gap: 1.5rem;
-    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
-}
-.marine-header h1 {
-    color: var(--text-light);
-    font-size: 1.6rem;
-    font-weight: 700;
-    margin: 0;
-    letter-spacing: 0.5px;
-}
-.marine-header .subtitle {
-    color: var(--ocean-cyan);
-    font-size: 0.85rem;
-    letter-spacing: 1.5px;
-    text-transform: uppercase;
-    font-weight: 600;
-}
-
-/* ── KPI Cards ────────────────────────────────────────── */
-.kpi-card {
-    background: var(--card-bg);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 1.1rem 1.2rem;
-    text-align: center;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.3);
-    transition: transform 0.2s ease, box-shadow 0.2s ease;
-    height: 110px;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-}
-.kpi-card:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 8px 32px rgba(21,170,191,0.2);
-}
-.kpi-card .kpi-label {
-    font-size: 0.72rem;
-    color: var(--ocean-cyan);
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    font-weight: 600;
-    margin-bottom: 0.3rem;
-}
-.kpi-card .kpi-value {
-    font-size: 1.8rem;
-    font-weight: 800;
-    color: var(--text-light);
-    line-height: 1.1;
-}
-.kpi-card .kpi-unit {
-    font-size: 0.8rem;
-    color: var(--text-muted);
-    margin-top: 0.1rem;
-}
-
-/* ── Warning Box ─────────────────────────────────────── */
-.warning-box {
-    border-radius: 10px;
-    padding: 1rem 1.4rem;
-    margin: 1rem 0;
-    border-left: 5px solid;
-    font-size: 0.9rem;
-    font-weight: 500;
-}
-.warning-none {
-    background: rgba(47, 158, 68, 0.12);
-    border-color: var(--alert-green);
-    color: #a9e34b;
-}
-.warning-yellow {
-    background: rgba(245, 159, 0, 0.12);
-    border-color: var(--alert-yellow);
-    color: #ffd43b;
-}
-.warning-red {
-    background: rgba(224, 49, 49, 0.14);
-    border-color: var(--alert-red);
-    color: #ff8787;
-}
-
-/* ── Section headers ─────────────────────────────────── */
-.section-title {
-    color: var(--ocean-cyan);
-    font-size: 0.75rem;
-    text-transform: uppercase;
-    letter-spacing: 2px;
-    font-weight: 700;
-    border-bottom: 1px solid var(--border);
-    padding-bottom: 0.5rem;
-    margin: 1.5rem 0 1rem 0;
-}
-
-/* ── Sidebar ─────────────────────────────────────────── */
-[data-testid="stSidebar"] {
-    background: rgba(10, 22, 40, 0.97) !important;
-    border-right: 1px solid var(--border);
-}
-[data-testid="stSidebar"] .stMarkdown h2 {
-    color: var(--ocean-cyan);
-    font-size: 0.85rem;
-    text-transform: uppercase;
-    letter-spacing: 1.5px;
-}
-
-/* ── Metric overrides ────────────────────────────────── */
-[data-testid="stMetric"] {
-    background: var(--card-bg) !important;
-    border: 1px solid var(--border) !important;
-    border-radius: 10px !important;
-    padding: 0.8rem !important;
-}
-[data-testid="stMetricLabel"] { color: var(--ocean-cyan) !important; font-size: 0.75rem !important; }
-[data-testid="stMetricValue"] { color: var(--text-light) !important; }
-
-/* ── Plotly charts background ────────────────────────── */
-.js-plotly-plot .plotly .modebar {
-    background: rgba(13, 34, 64, 0.9) !important;
-}
-
-/* ── Tab styling ─────────────────────────────────────── */
-[data-testid="stTabs"] button {
-    color: var(--text-muted) !important;
-}
-[data-testid="stTabs"] button[aria-selected="true"] {
-    color: var(--ocean-cyan) !important;
-    border-bottom-color: var(--ocean-cyan) !important;
-}
-
-/* ── Download buttons ────────────────────────────────── */
-.stDownloadButton > button {
-    background: linear-gradient(135deg, var(--ocean-teal), var(--ocean-blue)) !important;
-    color: white !important;
-    border: 1px solid var(--ocean-cyan) !important;
-    border-radius: 8px !important;
-    font-weight: 600 !important;
-    letter-spacing: 0.5px !important;
-}
-.stDownloadButton > button:hover {
-    background: linear-gradient(135deg, var(--ocean-cyan), var(--ocean-teal)) !important;
-    box-shadow: 0 4px 16px rgba(21,170,191,0.4) !important;
-}
-
-/* ── Selectbox, slider ───────────────────────────────── */
-.stMultiSelect span[data-baseweb="tag"] {
-    background-color: var(--ocean-teal) !important;
-}
+:root{--ocean-dark:#0a1628;--ocean-mid:#0d2240;--ocean-blue:#0e3a6e;--ocean-teal:#0b7285;
+      --ocean-cyan:#15aabf;--alert-red:#e03131;--alert-yellow:#f59f00;--alert-green:#2f9e44;
+      --text-light:#e9ecef;--text-muted:#adb5bd;--card-bg:rgba(13,34,64,0.85);--border:rgba(21,170,191,0.3);}
+.stApp{background:linear-gradient(160deg,#0a1628 0%,#0d2240 50%,#051020 100%);}
+.marine-header{background:linear-gradient(135deg,rgba(14,58,110,0.9),rgba(11,114,133,0.7));
+  border:1px solid var(--border);border-radius:16px;padding:1.5rem 2rem;margin-bottom:1.5rem;
+  display:flex;align-items:center;gap:1.5rem;box-shadow:0 8px 32px rgba(0,0,0,0.4);}
+.marine-header h1{color:var(--text-light);font-size:1.6rem;font-weight:700;margin:0;}
+.marine-header .subtitle{color:var(--ocean-cyan);font-size:0.85rem;letter-spacing:1.5px;text-transform:uppercase;font-weight:600;}
+.kpi-card{background:var(--card-bg);border:1px solid var(--border);border-radius:12px;
+  padding:1.1rem 1.2rem;text-align:center;box-shadow:0 4px 20px rgba(0,0,0,0.3);
+  transition:transform 0.2s,box-shadow 0.2s;height:110px;display:flex;flex-direction:column;justify-content:center;}
+.kpi-card:hover{transform:translateY(-2px);box-shadow:0 8px 32px rgba(21,170,191,0.2);}
+.kpi-card .kpi-label{font-size:0.72rem;color:var(--ocean-cyan);text-transform:uppercase;letter-spacing:1px;font-weight:600;margin-bottom:0.3rem;}
+.kpi-card .kpi-value{font-size:1.8rem;font-weight:800;color:var(--text-light);line-height:1.1;}
+.kpi-card .kpi-unit{font-size:0.8rem;color:var(--text-muted);margin-top:0.1rem;}
+.warning-box{border-radius:10px;padding:1rem 1.4rem;margin:1rem 0;border-left:5px solid;font-size:0.9rem;font-weight:500;}
+.warning-none{background:rgba(47,158,68,0.12);border-color:var(--alert-green);color:#a9e34b;}
+.warning-yellow{background:rgba(245,159,0,0.12);border-color:var(--alert-yellow);color:#ffd43b;}
+.warning-red{background:rgba(224,49,49,0.14);border-color:var(--alert-red);color:#ff8787;}
+.section-title{color:var(--ocean-cyan);font-size:0.75rem;text-transform:uppercase;letter-spacing:2px;
+  font-weight:700;border-bottom:1px solid var(--border);padding-bottom:0.5rem;margin:1.5rem 0 1rem 0;}
+[data-testid="stSidebar"]{background:rgba(10,22,40,0.97)!important;border-right:1px solid var(--border);}
+[data-testid="stSidebar"] .stMarkdown h2{color:var(--ocean-cyan);font-size:0.85rem;text-transform:uppercase;letter-spacing:1.5px;}
+[data-testid="stMetric"]{background:var(--card-bg)!important;border:1px solid var(--border)!important;border-radius:10px!important;padding:0.8rem!important;}
+[data-testid="stMetricLabel"]{color:var(--ocean-cyan)!important;font-size:0.75rem!important;}
+[data-testid="stMetricValue"]{color:var(--text-light)!important;}
+[data-testid="stTabs"] button{color:var(--text-muted)!important;}
+[data-testid="stTabs"] button[aria-selected="true"]{color:var(--ocean-cyan)!important;border-bottom-color:var(--ocean-cyan)!important;}
+.stDownloadButton>button{background:linear-gradient(135deg,var(--ocean-teal),var(--ocean-blue))!important;
+  color:white!important;border:1px solid var(--ocean-cyan)!important;border-radius:8px!important;font-weight:600!important;}
+.stDownloadButton>button:hover{background:linear-gradient(135deg,var(--ocean-cyan),var(--ocean-teal))!important;
+  box-shadow:0 4px 16px rgba(21,170,191,0.4)!important;}
 </style>
 """, unsafe_allow_html=True)
 
-# ─────────────────────────────────────────────────────────────────────────────
-# CONSTANTES — Configuration des variables
-# ─────────────────────────────────────────────────────────────────────────────
-
-ALERT_SWH_WARNING = 1.6   # m — seuil prudence
-ALERT_SWH_DANGER  = 2.0   # m — seuil danger
-ALERT_WIND_WARNING = 15   # kt — seuil vent prudence
-ALERT_WIND_DANGER  = 20   # kt — seuil vent danger
-
-# Métadonnées complètes de chaque variable
-VAR_META = {
-    "swh_m": {
-        "label": "Hauteur significative des vagues (SWH)",
-        "short": "SWH",
-        "unit": "m",
-        "color": "#15aabf",
-        "group": "🌊 Vagues",
-        "icon": "🌊",
-        "thresholds": [
-            {"value": ALERT_SWH_WARNING, "color": "rgba(245,159,0,0.3)",  "dash": "dash",  "name": "Prudence 1.6m"},
-            {"value": ALERT_SWH_DANGER,  "color": "rgba(224,49,49,0.5)",  "dash": "dashdot","name": "Danger 2.0m"},
-        ],
-    },
-    "sw1_ht_m": {
-        "label": "Hauteur Swell 1",
-        "short": "Swell 1",
-        "unit": "m",
-        "color": "#339af0",
-        "group": "🌊 Vagues",
-        "icon": "🌊",
-        "thresholds": [],
-    },
-    "sw2_ht_m": {
-        "label": "Hauteur Swell 2",
-        "short": "Swell 2",
-        "unit": "m",
-        "color": "#74c0fc",
-        "group": "🌊 Vagues",
-        "icon": "🌊",
-        "thresholds": [],
-    },
-    "sw1_period_s": {
-        "label": "Période Swell 1",
-        "short": "Période Sw1",
-        "unit": "s",
-        "color": "#a5d8ff",
-        "group": "🌊 Vagues",
-        "icon": "⏱️",
-        "thresholds": [],
-    },
-    "sw2_period_s": {
-        "label": "Période Swell 2",
-        "short": "Période Sw2",
-        "unit": "s",
-        "color": "#d0ebff",
-        "group": "🌊 Vagues",
-        "icon": "⏱️",
-        "thresholds": [],
-    },
-    "wind10_spd_kt": {
-        "label": "Vitesse vent 10m",
-        "short": "Vent 10m",
-        "unit": "kt",
-        "color": "#69db7c",
-        "group": "💨 Vent",
-        "icon": "💨",
-        "thresholds": [
-            {"value": ALERT_WIND_WARNING, "color": "rgba(245,159,0,0.3)", "dash": "dash",   "name": "15 kt"},
-            {"value": ALERT_WIND_DANGER,  "color": "rgba(224,49,49,0.5)", "dash": "dashdot","name": "20 kt"},
-        ],
-    },
-    "wind10_gust_kt": {
-        "label": "Rafales 10m",
-        "short": "Rafales",
-        "unit": "kt",
-        "color": "#b2f2bb",
-        "group": "💨 Vent",
-        "icon": "💨",
-        "thresholds": [],
-    },
-    "wind100_spd_kt": {
-        "label": "Vitesse vent 100m",
-        "short": "Vent 100m",
-        "unit": "kt",
-        "color": "#40c057",
-        "group": "💨 Vent",
-        "icon": "💨",
-        "thresholds": [],
-    },
-    "wind10_dir": {
-        "label": "Direction vent 10m",
-        "short": "Dir Vent 10m",
-        "unit": "°",
-        "color": "#a9e34b",
-        "group": "💨 Vent",
-        "icon": "🧭",
-        "thresholds": [],
-    },
-    "mslp_hpa": {
-        "label": "Pression mer (MSLP)",
-        "short": "MSLP",
-        "unit": "hPa",
-        "color": "#ffa94d",
-        "group": "🔴 Pression / Temp",
-        "icon": "🔴",
-        "thresholds": [
-            {"value": 1010, "color": "rgba(21,170,191,0.2)", "dash": "dot", "name": "1010 hPa"},
-        ],
-    },
-    "t2m_c": {
-        "label": "Température 2m",
-        "short": "T 2m",
-        "unit": "°C",
-        "color": "#ff6b6b",
-        "group": "🔴 Pression / Temp",
-        "icon": "🌡️",
-        "thresholds": [],
-    },
-    "sst_c": {
-        "label": "Température de surface mer (SST)",
-        "short": "SST",
-        "unit": "°C",
-        "color": "#f06595",
-        "group": "🔴 Pression / Temp",
-        "icon": "🌡️",
-        "thresholds": [],
-    },
-    "vis_km": {
-        "label": "Visibilité",
-        "short": "Visibilité",
-        "unit": "km",
-        "color": "#e599f7",
-        "group": "🌫️ Autres",
-        "icon": "👁️",
-        "thresholds": [],
-    },
-    "rain_pct": {
-        "label": "Probabilité de précipitation",
-        "short": "Précip. (%)",
-        "unit": "%",
-        "color": "#4dabf7",
-        "group": "🌫️ Autres",
-        "icon": "🌧️",
-        "thresholds": [
-            {"value": 50, "color": "rgba(21,170,191,0.2)", "dash": "dot", "name": "50%"},
-        ],
-    },
-    "cur_spd_kt": {
-        "label": "Vitesse courant marin",
-        "short": "Courant",
-        "unit": "kt",
-        "color": "#cc5de8",
-        "group": "🌫️ Autres",
-        "icon": "🔄",
-        "thresholds": [],
-    },
-    "cur_dir": {
-        "label": "Direction courant marin",
-        "short": "Dir Courant",
-        "unit": "°",
-        "color": "#da77f2",
-        "group": "🌫️ Autres",
-        "icon": "🧭",
-        "thresholds": [],
-    },
-}
 
 # ─────────────────────────────────────────────────────────────────────────────
-# DONNÉES DÉMO (générées si pipeline non disponible)
+# HELPERS TRADUCTION
 # ─────────────────────────────────────────────────────────────────────────────
+def T(key: str) -> str:
+    lang = st.session_state.get("lang", "FR")
+    return TRANSLATIONS[lang].get(key, key)
 
+def VM(var_key: str, field: str) -> str:
+    lang = st.session_state.get("lang", "FR")
+    return VAR_META[var_key][lang].get(field, "")
+
+def thresh_name(th: dict) -> str:
+    lang = st.session_state.get("lang", "FR")
+    return th.get(f"name_{lang}", th.get("name_FR", ""))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# DONNÉES DÉMO
+# ─────────────────────────────────────────────────────────────────────────────
 @st.cache_data(ttl=3600)
 def generate_demo_data() -> pd.DataFrame:
-    """Génère des données de démo réalistes pour le Golfe de Guinée."""
     np.random.seed(42)
-    now = datetime.now().replace(minute=0, second=0, microsecond=0)
-    # 5 jours × 6h = 20 pas de temps (+ 10 passés)
+    now   = datetime.now().replace(minute=0, second=0, microsecond=0)
     times = [now - timedelta(hours=6*i) for i in range(9, -21, -1)]
-    n = len(times)
-
-    t = np.linspace(0, 2*np.pi, n)
-
-    # SWH avec une houle réaliste Golfe de Guinée
-    swh_base = 1.2 + 0.6*np.sin(t) + 0.3*np.sin(2.3*t) + np.random.normal(0, 0.08, n)
-    swh_base = np.clip(swh_base, 0.3, 3.5)
-
+    n     = len(times)
+    t     = np.linspace(0, 2*np.pi, n)
+    swh   = np.clip(1.2 + 0.6*np.sin(t) + 0.3*np.sin(2.3*t) + np.random.normal(0,0.08,n), 0.3, 3.5)
     df = pd.DataFrame({
         "valid_local":    times,
-        "swh_m":          swh_base,
-        "sw1_ht_m":       np.clip(swh_base * 0.65 + np.random.normal(0, 0.05, n), 0, 2.5),
-        "sw1_period_s":   11 + 3*np.sin(t*0.7) + np.random.normal(0, 0.3, n),
-        "sw1_dir":        200 + 15*np.sin(t*0.4) + np.random.normal(0, 3, n),
-        "sw2_ht_m":       np.clip(swh_base * 0.35 + np.random.normal(0, 0.04, n), 0, 1.5),
-        "sw2_period_s":   7 + 2*np.sin(t*1.1) + np.random.normal(0, 0.3, n),
-        "sw2_dir":        240 + 10*np.sin(t*0.6) + np.random.normal(0, 3, n),
-        "wind10_spd_kt":  np.clip(8 + 6*np.sin(t*1.2) + np.random.normal(0, 0.5, n), 0, 30),
-        "wind10_gust_kt": np.clip(12 + 8*np.sin(t*1.2) + np.random.normal(0, 0.7, n), 0, 38),
-        "wind10_dir":     190 + 20*np.sin(t*0.5) + np.random.normal(0, 5, n),
-        "wind100_spd_kt": np.clip(12 + 7*np.sin(t*1.1) + np.random.normal(0, 0.6, n), 0, 35),
-        "wind100_dir":    195 + 18*np.sin(t*0.5) + np.random.normal(0, 4, n),
-        "mslp_hpa":       1013 - 2*np.sin(t*0.8) + np.random.normal(0, 0.3, n),
-        "t2m_c":          29 + 2*np.sin(t*0.3) + np.random.normal(0, 0.2, n),
-        "sst_c":          28 + 1.5*np.sin(t*0.25) + np.random.normal(0, 0.15, n),
-        "vis_km":         np.clip(15 - 3*np.sin(t*0.9) + np.random.normal(0, 0.5, n), 3, 20),
-        "rain_pct":       np.clip(20 + 30*np.sin(t*0.8)**2 + np.random.normal(0, 3, n), 0, 100),
-        "cur_spd_kt":     np.clip(0.5 + 0.4*np.sin(t*1.3) + np.random.normal(0, 0.05, n), 0, 2),
-        "cur_dir":        150 + 30*np.sin(t*0.7) + np.random.normal(0, 5, n),
+        "swh_m":          swh,
+        "sw1_ht_m":       np.clip(swh*0.65 + np.random.normal(0,0.05,n), 0, 2.5),
+        "sw1_period_s":   11 + 3*np.sin(t*0.7) + np.random.normal(0,0.3,n),
+        "sw1_dir":        200 + 15*np.sin(t*0.4) + np.random.normal(0,3,n),
+        "sw2_ht_m":       np.clip(swh*0.35 + np.random.normal(0,0.04,n), 0, 1.5),
+        "sw2_period_s":   7 + 2*np.sin(t*1.1) + np.random.normal(0,0.3,n),
+        "sw2_dir":        240 + 10*np.sin(t*0.6) + np.random.normal(0,3,n),
+        "wind10_spd_kt":  np.clip(8 + 6*np.sin(t*1.2) + np.random.normal(0,0.5,n), 0, 30),
+        "wind10_gust_kt": np.clip(12 + 8*np.sin(t*1.2) + np.random.normal(0,0.7,n), 0, 38),
+        "wind10_dir":     190 + 20*np.sin(t*0.5) + np.random.normal(0,5,n),
+        "wind100_spd_kt": np.clip(12 + 7*np.sin(t*1.1) + np.random.normal(0,0.6,n), 0, 35),
+        "wind100_dir":    195 + 18*np.sin(t*0.5) + np.random.normal(0,4,n),
+        "mslp_hpa":       1013 - 2*np.sin(t*0.8) + np.random.normal(0,0.3,n),
+        "t2m_c":          29 + 2*np.sin(t*0.3) + np.random.normal(0,0.2,n),
+        "sst_c":          28 + 1.5*np.sin(t*0.25) + np.random.normal(0,0.15,n),
+        "vis_km":         np.clip(15 - 3*np.sin(t*0.9) + np.random.normal(0,0.5,n), 3, 20),
+        "rain_pct":       np.clip(20 + 30*np.sin(t*0.8)**2 + np.random.normal(0,3,n), 0, 100),
+        "cur_spd_kt":     np.clip(0.5 + 0.4*np.sin(t*1.3) + np.random.normal(0,0.05,n), 0, 2),
+        "cur_dir":        150 + 30*np.sin(t*0.7) + np.random.normal(0,5,n),
     })
-
     df["valid_local"] = pd.to_datetime(df["valid_local"])
     return df
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# CHARGEMENT DES DONNÉES RÉELLES (pipeline)
+# PIPELINE LIVE  (ne nécessite pas xarray côté dashboard)
 # ─────────────────────────────────────────────────────────────────────────────
-
 @st.cache_data(ttl=3600, show_spinner=False)
-def load_pipeline_data(run_date: str, run_hour: int, swh_source: str) -> tuple[pd.DataFrame | None, str | None]:
-    """Lance le pipeline et retourne (df, error_msg)."""
+def load_pipeline_data(run_date, run_hour, swh_source):
     try:
-        sys.path.insert(0, os.path.dirname(__file__))
-        from datetime import datetime as dt
-        import config
-        import extractor
-
-        run_dt = dt.strptime(f"{run_date} {run_hour:02d}:00", "%Y-%m-%d %H:%M")
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import config, extractor          # modules du dépôt local
+        from datetime import datetime as _dt
+        run_dt = _dt.strptime(f"{run_date} {run_hour:02d}:00", "%Y-%m-%d %H:%M")
         if swh_source:
             config.SWH_SOURCE = swh_source
-
         df_ecmwf = extractor.extract_ecmwf(run_dt)
         df_cop   = extractor.extract_copernicus(run_dt)
         df       = extractor.merge_sources(df_ecmwf, df_cop)
@@ -461,817 +394,508 @@ def load_pipeline_data(run_date: str, run_hour: int, swh_source: str) -> tuple[p
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# HELPERS
+# HELPERS GRAPHIQUES
 # ─────────────────────────────────────────────────────────────────────────────
-
-def deg_to_compass(deg: float) -> str:
-    dirs = ["N","NNE","NE","ENE","E","ESE","SE","SSE",
-            "S","SSO","SO","OSO","O","ONO","NO","NNO"]
-    ix = round(deg / 22.5) % 16
-    return dirs[ix]
-
-def get_alert_level(df: pd.DataFrame) -> tuple[str, str, str]:
-    """Retourne (niveau, css_class, texte_warning)."""
-    swh_max  = df["swh_m"].max()  if "swh_m"          in df.columns else 0
+def get_alert_level(df):
+    swh_max  = df["swh_m"].max()         if "swh_m"         in df.columns else 0
     wind_max = df["wind10_spd_kt"].max() if "wind10_spd_kt" in df.columns else 0
-
     if swh_max >= ALERT_SWH_DANGER or wind_max >= ALERT_WIND_DANGER:
-        return "🔴 DANGER", "warning-red", (
-            f"Warning: Conditions dangereuses attendues. "
-            f"SWH max {swh_max:.1f} m — Vent max {wind_max:.0f} kt."
-        )
+        return T("alert_danger"),  "warning-red",    f"{T('warn_danger')}  SWH max {swh_max:.1f} m — {T('kpi_wind')} {wind_max:.0f} kt."
     elif swh_max >= ALERT_SWH_WARNING or wind_max >= ALERT_WIND_WARNING:
-        return "🟡 PRUDENCE", "warning-yellow", (
-            f"Warning: Conditions modérées. Prudence recommandée. "
-            f"SWH max {swh_max:.1f} m — Vent max {wind_max:.0f} kt."
-        )
+        return T("alert_caution"), "warning-yellow", f"{T('warn_caution')} SWH max {swh_max:.1f} m — {T('kpi_wind')} {wind_max:.0f} kt."
     else:
-        return "🟢 NORMAL", "warning-none", (
-            f"Warning: None. Conditions clémentes. "
-            f"SWH max {swh_max:.1f} m — Vent max {wind_max:.0f} kt."
-        )
+        return T("alert_normal"),  "warning-none",   f"{T('warn_none')}    SWH max {swh_max:.1f} m — {T('kpi_wind')} {wind_max:.0f} kt."
 
-def plotly_theme() -> dict:
-    """Thème plotly commun dark-ocean."""
+
+def plotly_theme():
     return dict(
-        paper_bgcolor="rgba(10,22,40,0)",
-        plot_bgcolor="rgba(13,34,64,0.5)",
-        font=dict(color="#e9ecef", family="monospace, sans-serif", size=12),
-        xaxis=dict(
-            gridcolor="rgba(21,170,191,0.12)",
-            linecolor="rgba(21,170,191,0.3)",
-            tickcolor="rgba(21,170,191,0.3)",
-            showgrid=True,
-        ),
-        yaxis=dict(
-            gridcolor="rgba(21,170,191,0.12)",
-            linecolor="rgba(21,170,191,0.3)",
-            tickcolor="rgba(21,170,191,0.3)",
-            showgrid=True,
-        ),
-        legend=dict(
-            bgcolor="rgba(10,22,40,0.7)",
-            bordercolor="rgba(21,170,191,0.3)",
-            borderwidth=1,
-        ),
-        margin=dict(l=60, r=30, t=40, b=50),
-        hovermode="x unified",
+        paper_bgcolor="rgba(10,22,40,0)", plot_bgcolor="rgba(13,34,64,0.5)",
+        font=dict(color="#e9ecef", family="monospace,sans-serif", size=12),
+        xaxis=dict(gridcolor="rgba(21,170,191,0.12)", linecolor="rgba(21,170,191,0.3)", showgrid=True),
+        yaxis=dict(gridcolor="rgba(21,170,191,0.12)", linecolor="rgba(21,170,191,0.3)", showgrid=True),
+        legend=dict(bgcolor="rgba(10,22,40,0.7)", bordercolor="rgba(21,170,191,0.3)", borderwidth=1),
+        margin=dict(l=60,r=30,t=40,b=50), hovermode="x unified",
     )
 
-def add_thresholds(fig, var_key: str, df: pd.DataFrame, row=1, col=1):
-    """Ajoute les lignes de seuils d'alerte sur un subplot."""
-    meta = VAR_META.get(var_key, {})
-    for th in meta.get("thresholds", []):
-        fig.add_hline(
-            y=th["value"],
-            line_dash=th["dash"],
-            line_color=th["color"],
-            annotation_text=th["name"],
-            annotation_font_color=th["color"],
-            annotation_bgcolor="rgba(10,22,40,0.7)",
-            row=row, col=col,
-        )
+def fig_to_bytes(fig):
+    try:    return fig.to_image(format="png", scale=2, width=1400, height=600)
+    except: return fig.to_html().encode()
 
-def fig_to_bytes(fig) -> bytes:
-    """Exporte une figure plotly en PNG (bytes)."""
-    try:
-        return fig.to_image(format="png", scale=2, width=1400, height=600)
-    except Exception:
-        return fig.to_html().encode()
-
-def df_to_excel_bytes(df: pd.DataFrame) -> bytes:
+def df_to_excel_bytes(df):
     buf = io.BytesIO()
-    with pd.ExcelWriter(buf, engine="openpyxl") as writer:
-        df.to_excel(writer, sheet_name="Prévisions", index=False)
+    with pd.ExcelWriter(buf, engine="openpyxl") as w:
+        df.to_excel(w, index=False)
     return buf.getvalue()
 
-def df_to_csv_bytes(df: pd.DataFrame) -> bytes:
+def df_to_csv_bytes(df):
     return df.to_csv(index=False, sep=";", decimal=",").encode("utf-8-sig")
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# GRAPHIQUES
-# ─────────────────────────────────────────────────────────────────────────────
-
-def make_timeseries(df: pd.DataFrame, selected_vars: list[str], title: str = "") -> go.Figure:
-    """Crée un graphique multi-variables en séries temporelles (subplots)."""
-    n = len(selected_vars)
+def make_timeseries(df, selected_vars, title=""):
+    lang = st.session_state.get("lang", "FR")
+    n    = len(selected_vars)
     if n == 0:
         return go.Figure()
-
-    # Un subplot par variable
-    fig = make_subplots(
-        rows=n, cols=1,
-        shared_xaxes=True,
-        vertical_spacing=0.04,
-        subplot_titles=[VAR_META.get(v, {}).get("label", v) for v in selected_vars],
-    )
-
+    fig = make_subplots(rows=n, cols=1, shared_xaxes=True, vertical_spacing=0.04,
+        subplot_titles=[VAR_META.get(v,{}).get(lang,{}).get("label",v) for v in selected_vars])
     for i, var in enumerate(selected_vars, 1):
-        if var not in df.columns:
-            continue
-        meta = VAR_META.get(var, {})
-        color = meta.get("color", "#15aabf")
-        unit  = meta.get("unit", "")
-
-        # Remplissage sous la courbe pour première var
-        fill = "tozeroy" if i == 1 else "none"
-        fillcolor = f"rgba({int(color[1:3],16)},{int(color[3:5],16)},{int(color[5:7],16)},0.12)"
-
-        fig.add_trace(
-            go.Scatter(
-                x=df["valid_local"],
-                y=df[var],
-                mode="lines+markers",
-                name=meta.get("short", var),
-                line=dict(color=color, width=2),
-                marker=dict(size=4, color=color),
-                fill=fill,
-                fillcolor=fillcolor,
-                hovertemplate=f"<b>{meta.get('short', var)}</b>: %{{y:.2f}} {unit}<extra></extra>",
-            ),
-            row=i, col=1,
-        )
-        # Seuils
-        for th in meta.get("thresholds", []):
-            fig.add_hline(
-                y=th["value"],
-                line_dash=th["dash"],
-                line_color=th["color"],
-                line_width=1.5,
-                annotation_text=th["name"],
-                annotation_font=dict(color=th["color"], size=10),
-                annotation_bgcolor="rgba(10,22,40,0.6)",
-                row=i, col=1,
-            )
-
-        fig.update_yaxes(title_text=unit, row=i, col=1,
-                         title_font=dict(size=10, color=color))
-
+        if var not in df.columns: continue
+        meta  = VAR_META.get(var, {})
+        color = meta.get("color","#15aabf")
+        unit  = meta.get("unit","")
+        short = meta.get(lang,{}).get("short", var)
+        r,g,b = int(color[1:3],16),int(color[3:5],16),int(color[5:7],16)
+        fig.add_trace(go.Scatter(
+            x=df["valid_local"], y=df[var], mode="lines+markers", name=short,
+            line=dict(color=color,width=2), marker=dict(size=4,color=color),
+            fill="tozeroy" if i==1 else "none", fillcolor=f"rgba({r},{g},{b},0.12)",
+            hovertemplate=f"<b>{short}</b>: %{{y:.2f}} {unit}<extra></extra>",
+        ), row=i, col=1)
+        for th in meta.get("thresholds",[]):
+            fig.add_hline(y=th["value"], line_dash=th["dash"], line_color=th["color"], line_width=1.5,
+                annotation_text=thresh_name(th), annotation_font=dict(color=th["color"],size=10),
+                annotation_bgcolor="rgba(10,22,40,0.6)", row=i, col=1)
+        fig.update_yaxes(title_text=unit, row=i, col=1, title_font=dict(size=10,color=color))
     th = plotly_theme()
-    # Répliquer les axes sur chaque subplot
-    for i in range(1, n+1):
-        ax_y = "" if i == 1 else str(i)
-        ax_x = "" if i == 1 else str(i)
-        fig.update_layout(**{
-            f"yaxis{ax_y}": dict(
-                gridcolor="rgba(21,170,191,0.12)",
-                linecolor="rgba(21,170,191,0.3)",
-                showgrid=True,
-            )
-        })
-
-    fig.update_layout(
-        paper_bgcolor=th["paper_bgcolor"],
-        plot_bgcolor=th["plot_bgcolor"],
-        font=th["font"],
-        legend=th["legend"],
-        margin=th["margin"],
-        hovermode="x unified",
-        height=max(220 * n, 320),
-        title=dict(text=title, font=dict(color="#15aabf", size=14)) if title else None,
-        xaxis=th["xaxis"],
-    )
-    # Partager la config x sur tous
     for i in range(1, n+1):
         ax = f"xaxis{'' if i==1 else i}"
         fig.update_layout(**{ax: th["xaxis"]})
-
+        ay = f"yaxis{'' if i==1 else i}"
+        fig.update_layout(**{ay: dict(gridcolor="rgba(21,170,191,0.12)",linecolor="rgba(21,170,191,0.3)",showgrid=True)})
+    fig.update_layout(paper_bgcolor=th["paper_bgcolor"], plot_bgcolor=th["plot_bgcolor"],
+        font=th["font"], legend=th["legend"], margin=th["margin"], hovermode="x unified",
+        height=max(220*n,320),
+        title=dict(text=title,font=dict(color="#15aabf",size=14)) if title else None)
     return fig
 
 
-def make_wind_rose(df_filtered: pd.DataFrame) -> go.Figure:
-    """Rose des vents (Barpolar)."""
-    if "wind10_dir" not in df_filtered.columns or "wind10_spd_kt" not in df_filtered.columns:
+def make_wind_rose(df):
+    if "wind10_dir" not in df.columns or "wind10_spd_kt" not in df.columns:
         return go.Figure()
-
-    bins   = np.arange(0, 361, 22.5)
-    labels = ["N","NNE","NE","ENE","E","ESE","SE","SSE",
-              "S","SSO","SO","OSO","O","ONO","NO","NNO"]
-    dirs   = df_filtered["wind10_dir"].dropna().values
-    speeds = df_filtered["wind10_spd_kt"].dropna().values
-    min_len = min(len(dirs), len(speeds))
-    dirs = dirs[:min_len]; speeds = speeds[:min_len]
-
-    speed_bins  = [0, 5, 10, 15, 20, 100]
-    speed_labels = ["0–5 kt", "5–10 kt", "10–15 kt", "15–20 kt", ">20 kt"]
-    colors       = ["#74c0fc", "#15aabf", "#69db7c", "#ffa94d", "#ff6b6b"]
-
+    labels = ["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSO","SO","OSO","O","ONO","NO","NNO"]
+    bins   = np.arange(0,361,22.5)
+    dirs   = df["wind10_dir"].dropna().values
+    speeds = df["wind10_spd_kt"].dropna().values
+    ml     = min(len(dirs),len(speeds))
+    dirs,speeds = dirs[:ml],speeds[:ml]
+    sbins  = [0,5,10,15,20,100]
+    slabels= ["0–5 kt","5–10 kt","10–15 kt","15–20 kt",">20 kt"]
+    colors = ["#74c0fc","#15aabf","#69db7c","#ffa94d","#ff6b6b"]
     fig = go.Figure()
-    for j, (smin, smax) in enumerate(zip(speed_bins[:-1], speed_bins[1:])):
-        mask = (speeds >= smin) & (speeds < smax)
-        d    = dirs[mask]
-        counts = []
-        for k in range(16):
-            lo = bins[k]; hi = bins[k+1] if k < 15 else 360
-            counts.append(np.sum((d >= lo) & (d < hi)))
-        fig.add_trace(go.Barpolar(
-            r=counts, theta=labels,
-            name=speed_labels[j],
-            marker_color=colors[j],
-            marker_line_color="rgba(10,22,40,0.5)",
-            marker_line_width=0.5,
-            opacity=0.85,
-        ))
-
+    for j,(smin,smax) in enumerate(zip(sbins[:-1],sbins[1:])):
+        mask   = (speeds>=smin)&(speeds<smax)
+        d      = dirs[mask]
+        counts = [np.sum((d>=bins[k])&(d<(bins[k+1] if k<15 else 360))) for k in range(16)]
+        fig.add_trace(go.Barpolar(r=counts,theta=labels,name=slabels[j],
+            marker_color=colors[j],marker_line_color="rgba(10,22,40,0.5)",marker_line_width=0.5,opacity=0.85))
     th = plotly_theme()
     fig.update_layout(
-        polar=dict(
-            bgcolor="rgba(13,34,64,0.6)",
-            radialaxis=dict(showticklabels=True, ticks="", gridcolor="rgba(21,170,191,0.2)",
-                            linecolor="rgba(21,170,191,0.2)", tickfont=dict(color="#adb5bd", size=9)),
-            angularaxis=dict(direction="clockwise", gridcolor="rgba(21,170,191,0.15)",
-                             tickfont=dict(color="#e9ecef", size=11)),
-        ),
-        paper_bgcolor=th["paper_bgcolor"],
-        font=th["font"],
-        legend=th["legend"],
-        margin=dict(l=40, r=40, t=50, b=40),
-        height=380,
-        title=dict(text="Rose des Vents 10m", font=dict(color="#69db7c", size=13)),
-    )
+        polar=dict(bgcolor="rgba(13,34,64,0.6)",
+            radialaxis=dict(showticklabels=True,ticks="",gridcolor="rgba(21,170,191,0.2)",tickfont=dict(color="#adb5bd",size=9)),
+            angularaxis=dict(direction="clockwise",gridcolor="rgba(21,170,191,0.15)",tickfont=dict(color="#e9ecef",size=11))),
+        paper_bgcolor=th["paper_bgcolor"],font=th["font"],legend=th["legend"],
+        margin=dict(l=40,r=40,t=50,b=40),height=380,
+        title=dict(text=T("wind_rose_title"),font=dict(color="#69db7c",size=13)))
     return fig
 
 
-def make_swell_compass(df_filtered: pd.DataFrame) -> go.Figure:
-    """Graphique polaire direction/hauteur swell."""
-    fig = go.Figure()
-    for sw, col, label in [
-        ("sw1_dir", "#339af0", "Swell 1"),
-        ("sw2_dir", "#74c0fc", "Swell 2"),
-    ]:
-        ht_col = sw.replace("_dir", "_ht_m")
-        if sw not in df_filtered.columns or ht_col not in df_filtered.columns:
-            continue
-        fig.add_trace(go.Scatterpolar(
-            r=df_filtered[ht_col].fillna(0),
-            theta=df_filtered[sw].fillna(0),
-            mode="markers",
-            name=label,
-            marker=dict(color=col, size=8, opacity=0.8,
-                        line=dict(color="white", width=0.5)),
-            hovertemplate="Dir: %{theta:.0f}°<br>Ht: %{r:.2f} m<extra></extra>",
-        ))
-
+def make_swell_compass(df):
+    lang = st.session_state.get("lang","FR")
+    fig  = go.Figure()
+    for sw,col,hkey in [("sw1_dir","#339af0","sw1_ht_m"),("sw2_dir","#74c0fc","sw2_ht_m")]:
+        if sw not in df.columns or hkey not in df.columns: continue
+        label = VAR_META[hkey][lang]["short"]
+        fig.add_trace(go.Scatterpolar(r=df[hkey].fillna(0),theta=df[sw].fillna(0),
+            mode="markers",name=label,
+            marker=dict(color=col,size=8,opacity=0.8,line=dict(color="white",width=0.5)),
+            hovertemplate="Dir: %{theta:.0f}°<br>Ht: %{r:.2f} m<extra></extra>"))
     th = plotly_theme()
     fig.update_layout(
-        polar=dict(
-            bgcolor="rgba(13,34,64,0.6)",
-            radialaxis=dict(showticklabels=True, ticks="", gridcolor="rgba(21,170,191,0.2)",
-                            linecolor="rgba(21,170,191,0.2)", tickfont=dict(color="#adb5bd", size=9)),
-            angularaxis=dict(direction="clockwise", rotation=90,
-                             gridcolor="rgba(21,170,191,0.15)",
-                             tickfont=dict(color="#e9ecef", size=10)),
-        ),
-        paper_bgcolor=th["paper_bgcolor"],
-        font=th["font"],
-        legend=th["legend"],
-        margin=dict(l=40, r=40, t=50, b=40),
-        height=380,
-        title=dict(text="Direction & Hauteur Swell", font=dict(color="#339af0", size=13)),
-    )
+        polar=dict(bgcolor="rgba(13,34,64,0.6)",
+            radialaxis=dict(showticklabels=True,ticks="",gridcolor="rgba(21,170,191,0.2)",tickfont=dict(color="#adb5bd",size=9)),
+            angularaxis=dict(direction="clockwise",rotation=90,gridcolor="rgba(21,170,191,0.15)",tickfont=dict(color="#e9ecef",size=10))),
+        paper_bgcolor=th["paper_bgcolor"],font=th["font"],legend=th["legend"],
+        margin=dict(l=40,r=40,t=50,b=40),height=380,
+        title=dict(text=T("swell_dir_title"),font=dict(color="#339af0",size=13)))
     return fig
 
 
-def make_correlation_heatmap(df_filtered: pd.DataFrame, num_vars: list[str]) -> go.Figure:
-    """Matrice de corrélation des variables numériques."""
-    available = [v for v in num_vars if v in df_filtered.columns]
-    if len(available) < 2:
-        return go.Figure()
-
-    corr = df_filtered[available].corr().round(2)
-    labels = [VAR_META.get(v, {}).get("short", v) for v in available]
-
-    fig = go.Figure(go.Heatmap(
-        z=corr.values,
-        x=labels, y=labels,
+def make_correlation_heatmap(df, num_vars):
+    lang  = st.session_state.get("lang","FR")
+    avail = [v for v in num_vars if v in df.columns]
+    if len(avail) < 2: return go.Figure()
+    corr   = df[avail].corr().round(2)
+    labels = [VAR_META.get(v,{}).get(lang,{}).get("short",v) for v in avail]
+    fig = go.Figure(go.Heatmap(z=corr.values,x=labels,y=labels,
         colorscale=[[0,"#e03131"],[0.5,"rgba(13,34,64,0.5)"],[1,"#15aabf"]],
-        zmin=-1, zmax=1,
-        text=corr.values.round(2),
-        texttemplate="%{text}",
-        textfont=dict(size=10),
-        hovertemplate="%{x} vs %{y}: %{z}<extra></extra>",
-        colorbar=dict(tickfont=dict(color="#e9ecef")),
-    ))
-
+        zmin=-1,zmax=1,text=corr.values.round(2),texttemplate="%{text}",
+        textfont=dict(size=10),colorbar=dict(tickfont=dict(color="#e9ecef"))))
     th = plotly_theme()
-    fig.update_layout(
-        paper_bgcolor=th["paper_bgcolor"],
-        plot_bgcolor=th["plot_bgcolor"],
-        font=th["font"],
-        margin=dict(l=80, r=30, t=40, b=80),
-        height=420,
-        title=dict(text="Matrice de Corrélation", font=dict(color="#15aabf", size=13)),
-    )
+    fig.update_layout(paper_bgcolor=th["paper_bgcolor"],plot_bgcolor=th["plot_bgcolor"],
+        font=th["font"],margin=dict(l=80,r=30,t=40,b=80),height=420,
+        title=dict(text=T("corr_title"),font=dict(color="#15aabf",size=13)))
     return fig
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # SIDEBAR
 # ─────────────────────────────────────────────────────────────────────────────
-
 def render_sidebar():
     with st.sidebar:
+        # Logo
         st.markdown("""
-        <div style='text-align:center; padding:0.5rem 0 1rem 0;'>
+        <div style='text-align:center;padding:0.5rem 0 0.8rem 0;'>
             <div style='font-size:2.5rem;'>🌊</div>
-            <div style='color:#15aabf; font-size:0.7rem; letter-spacing:2px;
-                        text-transform:uppercase; font-weight:700;'>METEO-BENIN</div>
-            <div style='color:#adb5bd; font-size:0.65rem; margin-top:0.2rem;'>DPROM / SPAM</div>
-        </div>
-        """, unsafe_allow_html=True)
+            <div style='color:#15aabf;font-size:0.7rem;letter-spacing:2px;text-transform:uppercase;font-weight:700;'>METEO-BENIN</div>
+            <div style='color:#adb5bd;font-size:0.65rem;margin-top:0.2rem;'>DPROM / SPAM</div>
+        </div>""", unsafe_allow_html=True)
 
-        st.markdown("## ⚙️ Paramètres")
-
-        # ── Source de données ─────────────────────────────────
-        data_source = st.radio(
-            "Source de données",
-            ["🎲 Données démo", "🔗 Pipeline en direct"],
-            index=0,
-            help="'Démo' = données synthétiques réalistes. 'Pipeline' = lance le vrai pipeline ECMWF/Copernicus."
+        # ── Sélecteur de langue (en premier) ──────────────────
+        lang_choice = st.radio(
+            "🌐 Langue / Language",
+            ["🇫🇷 Français", "🇬🇧 English"],
+            index=0 if st.session_state.get("lang","FR") == "FR" else 1,
+            horizontal=True,
+            key="lang_radio",
         )
+        st.session_state["lang"] = "FR" if lang_choice.startswith("🇫🇷") else "EN"
+
+        st.divider()
+        st.markdown(f"## {T('settings')}")
+
+        # Source de données
+        data_source = st.radio(T("data_source_label"),
+            [T("data_demo"), T("data_live")], index=0)
 
         run_date, run_hour, swh_source = None, 0, "ecmwf"
-        if data_source == "🔗 Pipeline en direct":
-            st.markdown("### 📅 Date du run ECMWF")
-            run_date = st.date_input("Date", value=datetime.utcnow().date())
-            run_hour = st.selectbox("Heure UTC", [0, 6, 12, 18], index=2)
-            swh_source = st.selectbox("Source SWH", ["ecmwf", "copernicus"], index=0)
+        if data_source == T("data_live"):
+            st.markdown(T("ecmwf_run_title"))
+            run_date   = st.date_input(T("date_label"), value=datetime.utcnow().date())
+            run_hour   = st.selectbox(T("hour_utc"), [0,6,12,18], index=2)
+            swh_source = st.selectbox(T("swh_source"), ["ecmwf","copernicus"], index=0)
 
         st.divider()
 
-        # ── Sélection de variables ────────────────────────────
-        st.markdown("## 📊 Variables à visualiser")
-
-        groups = {}
-        for k, m in VAR_META.items():
-            g = m["group"]
-            groups.setdefault(g, []).append(k)
-
+        # Variables
+        st.markdown(T("vars_title"))
+        lang_v = st.session_state.get("lang","FR")
         selected_vars = []
-        for group_name, vars_in_group in groups.items():
-            with st.expander(group_name, expanded=group_name.startswith("🌊")):
+        for gk in ["grp_waves","grp_wind","grp_pres","grp_other"]:
+            vars_in_group = [k for k,m in VAR_META.items() if m[lang_v]["group"] == gk]
+            with st.expander(T(gk), expanded=(gk=="grp_waves")):
                 for v in vars_in_group:
-                    meta = VAR_META[v]
-                    checked = v in ["swh_m", "wind10_spd_kt", "mslp_hpa"]
-                    if st.checkbox(
-                        f"{meta['icon']} {meta['short']} ({meta['unit']})",
-                        value=checked,
-                        key=f"chk_{v}",
-                    ):
+                    meta    = VAR_META[v]
+                    checked = v in ["swh_m","wind10_spd_kt","mslp_hpa"]
+                    if st.checkbox(f"{meta['icon']} {meta[lang_v]['short']} ({meta['unit']})",
+                                   value=checked, key=f"chk_{v}"):
                         selected_vars.append(v)
 
         st.divider()
 
-        # ── Filtre temporel ───────────────────────────────────
-        st.markdown("## 🗓️ Période")
-
-        # Générer les données démo pour connaître les bornes disponibles
-        _df_bounds = generate_demo_data()
-        _dt_min = _df_bounds["valid_local"].min().to_pydatetime()
-        _dt_max = _df_bounds["valid_local"].max().to_pydatetime()
-
-        # Toutes les heures disponibles dans les données
-        _all_times = sorted(_df_bounds["valid_local"].dt.to_pydatetime().tolist())
-        _all_dates = sorted(set(t.date() for t in _all_times))
+        # Période
+        st.markdown(T("period_title"))
+        _df_b   = generate_demo_data()
+        _dt_min = _df_b["valid_local"].min().to_pydatetime()
+        _dt_max = _df_b["valid_local"].max().to_pydatetime()
+        _times  = sorted(_df_b["valid_local"].dt.to_pydatetime().tolist())
 
         col_a, col_b = st.columns(2)
         with col_a:
-            start_date = st.date_input(
-                "📅 Du",
-                value=_dt_min.date(),
-                min_value=_dt_min.date(),
-                max_value=_dt_max.date(),
-                key="start_date",
-            )
-            _hours_start = sorted(set(
-                t.hour for t in _all_times if t.date() == start_date
-            )) or list(range(0, 24, 6))
-            start_hour = st.selectbox(
-                "🕐 Heure début",
-                options=_hours_start,
-                format_func=lambda h: f"{h:02d}:00",
-                index=0,
-                key="start_hour",
-            )
+            start_date = st.date_input(T("date_from"), value=_dt_min.date(),
+                min_value=_dt_min.date(), max_value=_dt_max.date(), key="sd")
+            _hs = sorted({t.hour for t in _times if t.date()==start_date}) or list(range(0,24,6))
+            start_hour = st.selectbox(T("hour_from"), _hs,
+                format_func=lambda h: f"{h:02d}:00", index=0, key="sh")
         with col_b:
-            end_date = st.date_input(
-                "📅 Au",
-                value=_dt_max.date(),
-                min_value=_dt_min.date(),
-                max_value=_dt_max.date(),
-                key="end_date",
-            )
-            _hours_end = sorted(set(
-                t.hour for t in _all_times if t.date() == end_date
-            )) or list(range(0, 24, 6))
-            end_hour = st.selectbox(
-                "🕐 Heure fin",
-                options=_hours_end,
-                format_func=lambda h: f"{h:02d}:00",
-                index=len(_hours_end) - 1,
-                key="end_hour",
-            )
+            end_date = st.date_input(T("date_to"), value=_dt_max.date(),
+                min_value=_dt_min.date(), max_value=_dt_max.date(), key="ed")
+            _he = sorted({t.hour for t in _times if t.date()==end_date}) or list(range(0,24,6))
+            end_hour = st.selectbox(T("hour_to"), _he,
+                format_func=lambda h: f"{h:02d}:00", index=len(_he)-1, key="eh")
 
-        from datetime import datetime as _dt
-        time_start = _dt.combine(start_date, _dt.min.time()).replace(hour=start_hour)
-        time_end   = _dt.combine(end_date,   _dt.min.time()).replace(hour=end_hour)
-
-        # Sécurité : inverser si start > end
+        from datetime import datetime as _dt2
+        time_start = _dt2.combine(start_date, _dt2.min.time()).replace(hour=start_hour)
+        time_end   = _dt2.combine(end_date,   _dt2.min.time()).replace(hour=end_hour)
         if time_start > time_end:
             time_start, time_end = time_end, time_start
 
         st.divider()
 
-        # ── Options graphique ─────────────────────────────────
-        st.markdown("## 🎨 Options d'affichage")
-        show_markers = st.checkbox("Marqueurs sur courbes", value=True)
-        show_thresholds = st.checkbox("Seuils d'alerte", value=True)
-        chart_type = st.selectbox("Type principal", ["Séries temporelles", "Aire empilée"], index=0)
+        # Options d'affichage
+        st.markdown(T("display_title"))
+        show_markers    = st.checkbox(T("show_markers"), value=True)
+        show_thresholds = st.checkbox(T("show_thresh"),  value=True)
+        chart_type      = st.selectbox(T("chart_type"),  T("chart_types"))
 
         st.divider()
-        st.markdown("""
-        <div style='color:#adb5bd; font-size:0.65rem; text-align:center; line-height:1.6;'>
-            Sème — 6.22°N, 2.63°E<br>
-            Golfe de Guinée, Bénin<br>
-            Sources : ECMWF · Copernicus<br>
-            © 2026 LAOUROU M. DIANE
-        </div>
-        """, unsafe_allow_html=True)
+        st.markdown(f"""
+        <div style='color:#adb5bd;font-size:0.65rem;text-align:center;line-height:1.6;'>
+            Sème — 6.22°N, 2.63°E<br>Golfe de Guinée, Bénin<br>
+            ECMWF · Copernicus<br>{T('footer_copy')}
+        </div>""", unsafe_allow_html=True)
 
-    return {
-        "data_source": data_source,
-        "run_date": str(run_date) if run_date else None,
-        "run_hour": run_hour,
-        "swh_source": swh_source,
-        "selected_vars": selected_vars,
-        "time_start": time_start,
-        "time_end":   time_end,
-        "show_markers": show_markers,
-        "show_thresholds": show_thresholds,
-        "chart_type": chart_type,
-    }
+    return {"data_source":data_source,"run_date":str(run_date) if run_date else None,
+            "run_hour":run_hour,"swh_source":swh_source,"selected_vars":selected_vars,
+            "time_start":time_start,"time_end":time_end,
+            "show_markers":show_markers,"show_thresholds":show_thresholds,"chart_type":chart_type}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # KPI ROW
 # ─────────────────────────────────────────────────────────────────────────────
-
-def render_kpi_row(df: pd.DataFrame):
-    """Affiche les KPI principaux en 1 ligne."""
+def render_kpi_row(df):
     cols = st.columns(6)
     kpis = [
-        ("swh_m",          "SWH Max",        "m",    lambda s: f"{s.max():.2f}"),
-        ("wind10_spd_kt",  "Vent Max",        "kt",   lambda s: f"{s.max():.1f}"),
-        ("wind10_gust_kt", "Rafale Max",      "kt",   lambda s: f"{s.max():.1f}"),
-        ("mslp_hpa",       "MSLP Min",        "hPa",  lambda s: f"{s.min():.1f}"),
-        ("sst_c",          "SST Moy",         "°C",   lambda s: f"{s.mean():.1f}"),
-        ("rain_pct",       "Précip Max",      "%",    lambda s: f"{s.max():.0f}"),
+        ("swh_m",         T("kpi_swh"),  "m",   lambda s: f"{s.max():.2f}"),
+        ("wind10_spd_kt", T("kpi_wind"), "kt",  lambda s: f"{s.max():.1f}"),
+        ("wind10_gust_kt",T("kpi_gust"), "kt",  lambda s: f"{s.max():.1f}"),
+        ("mslp_hpa",      T("kpi_mslp"), "hPa", lambda s: f"{s.min():.1f}"),
+        ("sst_c",         T("kpi_sst"),  "°C",  lambda s: f"{s.mean():.1f}"),
+        ("rain_pct",      T("kpi_rain"), "%",   lambda s: f"{s.max():.0f}"),
     ]
-    for col, (var, label, unit, fmt) in zip(cols, kpis):
+    for col,(var,label,unit,fmt) in zip(cols,kpis):
         with col:
-            if var in df.columns:
-                val = fmt(df[var].dropna())
-            else:
-                val = "—"
+            val = fmt(df[var].dropna()) if var in df.columns else "—"
             st.markdown(f"""
             <div class="kpi-card">
                 <div class="kpi-label">{label}</div>
                 <div class="kpi-value">{val}</div>
                 <div class="kpi-unit">{unit}</div>
-            </div>
-            """, unsafe_allow_html=True)
+            </div>""", unsafe_allow_html=True)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# ONGLETS PRINCIPAUX
+# ONGLETS
 # ─────────────────────────────────────────────────────────────────────────────
-
-def render_main_tabs(df: pd.DataFrame, df_filtered: pd.DataFrame, params: dict):
-    """Affiche les onglets du dashboard."""
+def render_main_tabs(df, df_filtered, params):
+    lang     = st.session_state.get("lang","FR")
     selected = params["selected_vars"]
 
-    tab_ts, tab_vent, tab_swell, tab_corr, tab_data, tab_export = st.tabs([
-        "📈 Séries temporelles",
-        "💨 Vent & Rose",
-        "🌊 Swell & Courants",
-        "🔗 Corrélations",
-        "📋 Données brutes",
-        "💾 Exports",
-    ])
+    tab_ts,tab_vent,tab_swell,tab_corr,tab_data,tab_export = st.tabs([
+        T("tab_ts"),T("tab_wind"),T("tab_swell"),T("tab_corr"),T("tab_data"),T("tab_export")])
 
-    # ────────── Onglet 1 : Séries temporelles ────────────────
+    # Séries temporelles
     with tab_ts:
         if not selected:
-            st.info("👈 Sélectionnez au moins une variable dans la barre latérale.")
+            st.info(T("select_var_hint"))
         else:
-            fig = make_timeseries(df_filtered, selected,
-                                  title=f"Prévisions — Sème ({df_filtered['valid_local'].min().strftime('%d/%m')} → {df_filtered['valid_local'].max().strftime('%d/%m %H:%M')})")
+            t_from = df_filtered["valid_local"].min().strftime("%d/%m")
+            t_to   = df_filtered["valid_local"].max().strftime("%d/%m %H:%M")
+            fig    = make_timeseries(df_filtered, selected, title=f"{T('forecast_title')} ({t_from} → {t_to})")
             st.plotly_chart(fig, use_container_width=True)
-
-            # Bouton export PNG
-            col_exp, _ = st.columns([1, 5])
+            col_exp,_ = st.columns([1,5])
             with col_exp:
                 try:
                     img = fig_to_bytes(fig)
-                    ext = "png" if isinstance(img, bytes) and img[:4] == b'\x89PNG' else "html"
-                    st.download_button(
-                        f"⬇️ Export PNG",
-                        data=img,
-                        file_name=f"seme_timeseries_{datetime.now().strftime('%Y%m%d_%H%M')}.{ext}",
-                        mime=f"image/{ext}" if ext == "png" else "text/html",
-                        key="dl_ts",
-                    )
+                    ext = "png" if isinstance(img,bytes) and img[:4]==b'\x89PNG' else "html"
+                    st.download_button(T("export_png"), data=img,
+                        file_name=f"seme_{datetime.now().strftime('%Y%m%d_%H%M')}.{ext}",
+                        mime=f"image/{ext}", key="dl_ts")
                 except Exception:
                     pass
 
-    # ────────── Onglet 2 : Vent & Rose ───────────────────────
+    # Vent & Rose
     with tab_vent:
-        c1, c2 = st.columns([1, 1])
+        c1,c2 = st.columns(2)
         with c1:
-            fig_w = make_timeseries(
-                df_filtered,
-                [v for v in ["wind10_spd_kt","wind10_gust_kt","wind100_spd_kt"] if v in df_filtered.columns],
-                title="Vitesses de vent"
-            )
-            st.plotly_chart(fig_w, use_container_width=True)
+            wv = [v for v in ["wind10_spd_kt","wind10_gust_kt","wind100_spd_kt"] if v in df_filtered.columns]
+            st.plotly_chart(make_timeseries(df_filtered, wv, T("wind_speed_title")), use_container_width=True)
         with c2:
-            fig_r = make_wind_rose(df_filtered)
-            st.plotly_chart(fig_r, use_container_width=True)
-
-        # Direction vent
+            st.plotly_chart(make_wind_rose(df_filtered), use_container_width=True)
         if "wind10_dir" in df_filtered.columns:
-            st.markdown('<div class="section-title">Direction du vent 10m (°)</div>', unsafe_allow_html=True)
-            fig_dir = make_timeseries(df_filtered, ["wind10_dir"], title="Direction vent 10m")
-            st.plotly_chart(fig_dir, use_container_width=True)
+            st.markdown(f'<div class="section-title">{T("wind_dir_title")}</div>', unsafe_allow_html=True)
+            st.plotly_chart(make_timeseries(df_filtered,["wind10_dir"],T("wind_dir_title")), use_container_width=True)
 
-    # ────────── Onglet 3 : Swell & Courants ──────────────────
+    # Swell & Courants
     with tab_swell:
-        c1, c2 = st.columns([1, 1])
+        c1,c2 = st.columns(2)
         with c1:
-            swell_vars = [v for v in ["swh_m","sw1_ht_m","sw2_ht_m"] if v in df_filtered.columns]
-            fig_s = make_timeseries(df_filtered, swell_vars, title="Hauteurs de houle")
-            st.plotly_chart(fig_s, use_container_width=True)
-
+            sv = [v for v in ["swh_m","sw1_ht_m","sw2_ht_m"] if v in df_filtered.columns]
+            st.plotly_chart(make_timeseries(df_filtered, sv, T("wave_height_title")), use_container_width=True)
         with c2:
-            fig_sc = make_swell_compass(df_filtered)
-            st.plotly_chart(fig_sc, use_container_width=True)
-
-        c3, c4 = st.columns([1, 1])
+            st.plotly_chart(make_swell_compass(df_filtered), use_container_width=True)
+        c3,c4 = st.columns(2)
         with c3:
-            period_vars = [v for v in ["sw1_period_s","sw2_period_s"] if v in df_filtered.columns]
-            if period_vars:
-                fig_p = make_timeseries(df_filtered, period_vars, title="Périodes de swell")
-                st.plotly_chart(fig_p, use_container_width=True)
+            pv = [v for v in ["sw1_period_s","sw2_period_s"] if v in df_filtered.columns]
+            if pv: st.plotly_chart(make_timeseries(df_filtered,pv,T("swell_per_title")), use_container_width=True)
         with c4:
-            cur_vars = [v for v in ["cur_spd_kt","cur_dir"] if v in df_filtered.columns]
-            if cur_vars:
-                fig_c = make_timeseries(df_filtered, cur_vars, title="Courants marins")
-                st.plotly_chart(fig_c, use_container_width=True)
+            cv = [v for v in ["cur_spd_kt","cur_dir"] if v in df_filtered.columns]
+            if cv: st.plotly_chart(make_timeseries(df_filtered,cv,T("current_title")), use_container_width=True)
 
-    # ────────── Onglet 4 : Corrélations ──────────────────────
+    # Corrélations
     with tab_corr:
-        numeric_vars = [k for k in VAR_META if k in df_filtered.columns and
-                        df_filtered[k].dtype in [float, int, np.float64, np.int64]]
-        if len(numeric_vars) >= 2:
-            fig_hm = make_correlation_heatmap(df_filtered, numeric_vars)
-            st.plotly_chart(fig_hm, use_container_width=True)
-        else:
-            st.info("Pas assez de variables numériques pour calculer les corrélations.")
-
-        # Scatter personnalisé
-        st.markdown('<div class="section-title">Nuage de points personnalisé</div>', unsafe_allow_html=True)
-        c1, c2 = st.columns(2)
+        num_vars = [k for k in VAR_META if k in df_filtered.columns
+                    and df_filtered[k].dtype in [float,int,np.float64,np.int64]]
+        if len(num_vars) >= 2:
+            st.plotly_chart(make_correlation_heatmap(df_filtered,num_vars), use_container_width=True)
+        st.markdown(f'<div class="section-title">{T("scatter_title")}</div>', unsafe_allow_html=True)
+        c1,c2 = st.columns(2)
         with c1:
-            var_x = st.selectbox("Axe X", options=numeric_vars,
-                                 index=numeric_vars.index("wind10_spd_kt") if "wind10_spd_kt" in numeric_vars else 0,
-                                 key="scatter_x")
+            var_x = st.selectbox(T("axis_x"), num_vars,
+                index=num_vars.index("wind10_spd_kt") if "wind10_spd_kt" in num_vars else 0, key="sx")
         with c2:
-            var_y = st.selectbox("Axe Y", options=numeric_vars,
-                                 index=numeric_vars.index("swh_m") if "swh_m" in numeric_vars else 0,
-                                 key="scatter_y")
-
+            var_y = st.selectbox(T("axis_y"), num_vars,
+                index=num_vars.index("swh_m") if "swh_m" in num_vars else 0, key="sy")
         if var_x and var_y:
-            mx = VAR_META.get(var_x, {}); my = VAR_META.get(var_y, {})
+            mx = VAR_META.get(var_x,{}); my = VAR_META.get(var_y,{})
+            sx = mx.get(lang,{}).get("short",var_x); sy = my.get(lang,{}).get("short",var_y)
+            ux = mx.get("unit","");                  uy = my.get("unit","")
             fig_sc = go.Figure(go.Scatter(
-                x=df_filtered[var_x], y=df_filtered[var_y],
-                mode="markers",
-                marker=dict(
-                    color=df_filtered["valid_local"].astype(np.int64) // 10**9,
-                    colorscale="Viridis",
-                    size=7, opacity=0.8,
-                    colorbar=dict(title="Temps", tickfont=dict(color="#e9ecef")),
-                    showscale=True,
-                ),
-                hovertemplate=f"{mx.get('short',var_x)}: %{{x:.2f}} {mx.get('unit','')}<br>"
-                              f"{my.get('short',var_y)}: %{{y:.2f}} {my.get('unit','')}<extra></extra>",
-            ))
+                x=df_filtered[var_x], y=df_filtered[var_y], mode="markers",
+                marker=dict(color=df_filtered["valid_local"].astype(np.int64)//10**9,
+                    colorscale="Viridis",size=7,opacity=0.8,
+                    colorbar=dict(title=T("time_label"),tickfont=dict(color="#e9ecef")),showscale=True),
+                hovertemplate=f"{sx}: %{{x:.2f}} {ux}<br>{sy}: %{{y:.2f}} {uy}<extra></extra>"))
             th = plotly_theme()
-            fig_sc.update_layout(
-                **th,
-                height=380,
-                xaxis_title=f"{mx.get('short',var_x)} ({mx.get('unit','')})",
-                yaxis_title=f"{my.get('short',var_y)} ({my.get('unit','')})",
-                title=dict(text=f"{mx.get('short',var_x)} vs {my.get('short',var_y)}",
-                           font=dict(color="#15aabf", size=13)),
-            )
+            fig_sc.update_layout(**th, height=380,
+                xaxis_title=f"{sx} ({ux})", yaxis_title=f"{sy} ({uy})",
+                title=dict(text=f"{sx} vs {sy}",font=dict(color="#15aabf",size=13)))
             st.plotly_chart(fig_sc, use_container_width=True)
 
-    # ────────── Onglet 5 : Données brutes ────────────────────
+    # Données brutes
     with tab_data:
-        st.markdown(f"**{len(df_filtered)} lignes** × **{len(df_filtered.columns)} colonnes**")
-
-        # Formatage
+        st.markdown(f"**{len(df_filtered)} {T('rows_cols')} {len(df_filtered.columns)}**")
         display_df = df_filtered.copy()
         display_df["valid_local"] = display_df["valid_local"].dt.strftime("%d/%m/%Y %H:%M")
-
-        # Coloration SWH
         def color_swh(val):
             try:
                 v = float(val)
-                if v >= ALERT_SWH_DANGER:
-                    return "background-color: rgba(224,49,49,0.25); color: #ff8787"
-                elif v >= ALERT_SWH_WARNING:
-                    return "background-color: rgba(245,159,0,0.2); color: #ffd43b"
-            except Exception:
-                pass
+                if v >= ALERT_SWH_DANGER:  return "background-color:rgba(224,49,49,0.25);color:#ff8787"
+                if v >= ALERT_SWH_WARNING: return "background-color:rgba(245,159,0,0.2);color:#ffd43b"
+            except Exception: pass
             return ""
-
         styled = display_df.style
         if "swh_m" in display_df.columns:
             styled = styled.map(color_swh, subset=["swh_m"])
-
-        # Arrondi pour affichage
-        numeric_cols = display_df.select_dtypes(include=[np.number]).columns
-        styled = styled.format({c: "{:.2f}" for c in numeric_cols}, na_rep="—")
-
+        nc = display_df.select_dtypes(include=[np.number]).columns
+        styled = styled.format({c:"{:.2f}" for c in nc}, na_rep="—")
         st.dataframe(styled, use_container_width=True, height=450)
 
-    # ────────── Onglet 6 : Exports ───────────────────────────
+    # Exports
     with tab_export:
-        st.markdown('<div class="section-title">Exporter les données filtrées</div>', unsafe_allow_html=True)
-        c1, c2, c3 = st.columns(3)
-
+        ts = datetime.now().strftime('%Y%m%d_%H%M')
+        st.markdown(f'<div class="section-title">{T("export_data_title")}</div>', unsafe_allow_html=True)
+        c1,c2,c3 = st.columns(3)
         with c1:
-            csv_bytes = df_to_csv_bytes(df_filtered)
-            st.download_button(
-                "⬇️ Export CSV (;)",
-                data=csv_bytes,
-                file_name=f"seme_previsions_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
-                mime="text/csv",
-                use_container_width=True,
-            )
-
+            st.download_button(T("export_csv"), data=df_to_csv_bytes(df_filtered),
+                file_name=f"seme_{ts}.csv", mime="text/csv", use_container_width=True)
         with c2:
-            xl_bytes = df_to_excel_bytes(df_filtered)
-            st.download_button(
-                "⬇️ Export Excel (.xlsx)",
-                data=xl_bytes,
-                file_name=f"seme_previsions_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
+            st.download_button(T("export_xlsx"), data=df_to_excel_bytes(df_filtered),
+                file_name=f"seme_{ts}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True,
-            )
-
+                use_container_width=True)
         with c3:
             json_str = df_filtered.assign(
                 valid_local=df_filtered["valid_local"].dt.strftime("%Y-%m-%dT%H:%M:%S")
             ).to_json(orient="records", indent=2, force_ascii=False)
-            st.download_button(
-                "⬇️ Export JSON",
-                data=json_str.encode("utf-8"),
-                file_name=f"seme_previsions_{datetime.now().strftime('%Y%m%d_%H%M')}.json",
-                mime="application/json",
-                use_container_width=True,
-            )
+            st.download_button(T("export_json"), data=json_str.encode("utf-8"),
+                file_name=f"seme_{ts}.json", mime="application/json", use_container_width=True)
 
-        st.markdown('<div class="section-title">Exporter les graphiques (PNG)</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="section-title">{T("export_png_title")}</div>', unsafe_allow_html=True)
         if params["selected_vars"]:
-            fig_export = make_timeseries(df_filtered, params["selected_vars"])
             try:
-                img = fig_to_bytes(fig_export)
-                ext = "png"
-                st.download_button(
-                    "⬇️ Graphique série temp. (PNG)",
-                    data=img,
-                    file_name=f"seme_graphique_{datetime.now().strftime('%Y%m%d_%H%M')}.{ext}",
-                    mime=f"image/{ext}",
-                    use_container_width=True,
-                )
+                img = fig_to_bytes(make_timeseries(df_filtered, params["selected_vars"]))
+                ext = "png" if isinstance(img,bytes) and img[:4]==b'\x89PNG' else "html"
+                st.download_button(T("export_png"), data=img,
+                    file_name=f"seme_chart_{ts}.{ext}", mime=f"image/{ext}", use_container_width=True)
             except Exception as e:
-                st.warning(f"Export PNG non disponible (kaleido manquant) : {e}")
+                st.warning(f"{T('export_png_warn')} : {e}")
 
         st.divider()
-        st.markdown("### 📋 Bulletin de synthèse")
-        level, css, warning_txt = get_alert_level(df_filtered)
-        swh_m = df_filtered["swh_m"].max() if "swh_m" in df_filtered.columns else 0
-        wind_m = df_filtered["wind10_spd_kt"].max() if "wind10_spd_kt" in df_filtered.columns else 0
-
-        bulletin = f"""BULLETIN DE PRÉVISION MARINE — SÈME (6.22°N, 2.63°E)
-METEO-BENIN / DPROM / SPAM
-Généré le : {datetime.now().strftime('%d/%m/%Y à %H:%M')} (UTC+1)
-Période : {df_filtered['valid_local'].min().strftime('%d/%m/%Y %H:%M')} → {df_filtered['valid_local'].max().strftime('%d/%m/%Y %H:%M')}
-
-═══════════════════════════════════════════════════════
-NIVEAU D'ALERTE : {level}
-{warning_txt}
-═══════════════════════════════════════════════════════
-
-STATISTIQUES CLÉS
-─────────────────
-SWH    max : {f'{swh_m:.2f} m' if "swh_m" in df_filtered.columns else 'N/A'}
-Vent   max : {f'{wind_m:.1f} kt' if "wind10_spd_kt" in df_filtered.columns else 'N/A'}
-Rafale max : {f'{df_filtered["wind10_gust_kt"].max():.1f} kt' if "wind10_gust_kt" in df_filtered.columns else 'N/A'}
-MSLP   min : {f'{df_filtered["mslp_hpa"].min():.1f} hPa' if "mslp_hpa" in df_filtered.columns else 'N/A'}
-SST  moy   : {f'{df_filtered["sst_c"].mean():.1f} °C' if "sst_c" in df_filtered.columns else 'N/A'}
-
-═══════════════════════════════════════════════════════
-Source : ECMWF Open Data + Copernicus Marine Service
-Auteur : LAOUROU MAKONDJOU DIANE
-"""
-        st.text_area("Bulletin texte", value=bulletin, height=340)
-        st.download_button(
-            "⬇️ Télécharger le bulletin (.txt)",
-            data=bulletin.encode("utf-8"),
-            file_name=f"bulletin_seme_{datetime.now().strftime('%Y%m%d_%H%M')}.txt",
-            mime="text/plain",
-            use_container_width=True,
+        st.markdown(T("bulletin_title"))
+        level,css,warning_txt = get_alert_level(df_filtered)
+        swh_m  = df_filtered["swh_m"].max()          if "swh_m"          in df_filtered.columns else 0
+        wind_m = df_filtered["wind10_spd_kt"].max()  if "wind10_spd_kt"  in df_filtered.columns else 0
+        gust_m = df_filtered["wind10_gust_kt"].max() if "wind10_gust_kt" in df_filtered.columns else 0
+        mslp_m = df_filtered["mslp_hpa"].min()       if "mslp_hpa"       in df_filtered.columns else 0
+        sst_m  = df_filtered["sst_c"].mean()          if "sst_c"          in df_filtered.columns else 0
+        t_from = df_filtered["valid_local"].min().strftime("%d/%m/%Y %H:%M")
+        t_to   = df_filtered["valid_local"].max().strftime("%d/%m/%Y %H:%M")
+        bulletin = (
+            f"{T('bul_header')}\nMETEO-BENIN / DPROM / SPAM\n"
+            f"{T('bul_generated')} : {datetime.now().strftime('%d/%m/%Y %H:%M')} (UTC+1)\n"
+            f"{T('bul_period')}    : {t_from} → {t_to}\n\n"
+            f"{'═'*55}\n{T('bul_alert')} : {level}\n{warning_txt}\n{'═'*55}\n\n"
+            f"{T('bul_stats')}\n{'─'*17}\n"
+            f"{T('bul_swh')}  : {swh_m:.2f} m\n"
+            f"{T('bul_wind')} : {wind_m:.1f} kt\n"
+            f"{T('bul_gust')} : {gust_m:.1f} kt\n"
+            f"{T('bul_mslp')} : {mslp_m:.1f} hPa\n"
+            f"{T('bul_sst')}  : {sst_m:.1f} °C\n\n"
+            f"{'═'*55}\n{T('bul_source')}\n{T('bul_author')}\n"
         )
+        st.text_area(T("bulletin_textarea"), value=bulletin, height=340)
+        st.download_button(T("bulletin_dl"), data=bulletin.encode("utf-8"),
+            file_name=f"bulletin_seme_{ts}.txt", mime="text/plain", use_container_width=True)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # MAIN
 # ─────────────────────────────────────────────────────────────────────────────
-
 def main():
+    if "lang" not in st.session_state:
+        st.session_state["lang"] = "FR"
+
     params = render_sidebar()
 
-    # ── Chargement des données ────────────────────────────────
-    if params["data_source"] == "🔗 Pipeline en direct":
-        with st.spinner("⏳ Lancement du pipeline ECMWF/Copernicus..."):
-            df, err = load_pipeline_data(
-                params["run_date"], params["run_hour"], params["swh_source"]
-            )
+    # Chargement données
+    if params["data_source"] == T("data_live"):
+        with st.spinner(T("spinner_live")):
+            df, err = load_pipeline_data(params["run_date"], params["run_hour"], params["swh_source"])
         if err:
-            st.error(f"❌ Erreur pipeline : {err}")
-            st.info("💡 Passage aux données de démonstration.")
-            df = generate_demo_data()
-            is_demo = True
+            st.error(f"{T('err_pipeline')} : {err}")
+            st.info(T("info_fallback"))
+            df, is_demo = generate_demo_data(), True
         else:
             is_demo = False
     else:
-        df = generate_demo_data()
-        is_demo = True
+        df, is_demo = generate_demo_data(), True
 
-    # ── Filtre temporel ───────────────────────────────────────
-    now_local = datetime.now()
+    # Filtre temporel
     df_filtered = df[
         (df["valid_local"] >= pd.Timestamp(params["time_start"])) &
         (df["valid_local"] <= pd.Timestamp(params["time_end"]))
     ].copy()
-
     if df_filtered.empty:
-        # Fallback : toute la période si filtre trop restrictif
         df_filtered = df.copy()
 
-    # ── Header ───────────────────────────────────────────────
-    demo_badge = " · <span style='color:#ffa94d; font-size:0.7rem;'>🎲 DONNÉES DÉMO</span>" if is_demo else ""
+    # Header
+    now_local  = datetime.now()
+    demo_badge = (f" · <span style='color:#ffa94d;font-size:0.7rem;'>{T('header_demo_badge')}</span>"
+                  if is_demo else "")
     st.markdown(f"""
     <div class="marine-header">
         <div style="font-size:3rem;">🌊</div>
         <div>
             <div class="subtitle">METEO-BENIN · DPROM / SPAM</div>
-            <h1>Prévision Marine — Sème{demo_badge}</h1>
-            <div style="color:#adb5bd; font-size:0.78rem; margin-top:0.2rem;">
+            <h1>{T('header_title')}{demo_badge}</h1>
+            <div style="color:#adb5bd;font-size:0.78rem;margin-top:0.2rem;">
                 📍 6.22°N, 2.63°E · Golfe de Guinée, Bénin &nbsp;|&nbsp;
-                Source : ECMWF Open Data + Copernicus Marine &nbsp;|&nbsp;
-                Mise à jour : {now_local.strftime('%d/%m/%Y %H:%M')}
+                {T('header_source')} &nbsp;|&nbsp;
+                {T('header_updated')} : {now_local.strftime('%d/%m/%Y %H:%M')}
             </div>
         </div>
-    </div>
-    """, unsafe_allow_html=True)
+    </div>""", unsafe_allow_html=True)
 
-    # ── Warning Banner ────────────────────────────────────────
+    # Warning banner
     level, css, warning_txt = get_alert_level(df_filtered)
-    st.markdown(
-        f'<div class="warning-box {css}"><b>{level}</b> — {warning_txt}</div>',
-        unsafe_allow_html=True,
-    )
+    st.markdown(f'<div class="warning-box {css}"><b>{level}</b> — {warning_txt}</div>',
+                unsafe_allow_html=True)
 
-    # ── KPI Row ───────────────────────────────────────────────
+    # KPI
     render_kpi_row(df_filtered)
     st.markdown("---")
 
-    # ── Onglets ───────────────────────────────────────────────
+    # Onglets
     render_main_tabs(df, df_filtered, params)
 
-    # ── Pied de page ─────────────────────────────────────────
-    st.markdown("""
-    <div style='text-align:center; color:#4a6480; font-size:0.68rem; margin-top:2rem; padding:1rem 0;
+    # Footer
+    st.markdown(f"""
+    <div style='text-align:center;color:#4a6480;font-size:0.68rem;margin-top:2rem;padding:1rem 0;
                 border-top:1px solid rgba(21,170,191,0.15);'>
-        © 2026 · LAOUROU MAKONDJOU DIANE · Météorologiste & Data Scientist · METEO-BENIN / DPROM / SPAM<br>
-        Données : ECMWF Open Data (CC BY 4.0) · Copernicus Marine Service
-    </div>
-    """, unsafe_allow_html=True)
+        © 2026 · LAOUROU MAKONDJOU DIANE · Météorologiste &amp; Data Scientist · METEO-BENIN / DPROM / SPAM<br>
+        ECMWF Open Data (CC BY 4.0) · Copernicus Marine Service
+    </div>""", unsafe_allow_html=True)
 
 
 if __name__ == "__main__":

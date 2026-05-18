@@ -825,11 +825,61 @@ def render_sidebar():
 
         # ── Filtre temporel ───────────────────────────────────
         st.markdown("## 🗓️ Période")
-        time_window = st.slider(
-            "Fenêtre (heures depuis maintenant)",
-            min_value=6, max_value=120, value=(0, 72), step=6,
-            help="0 = maintenant. Valeurs positives = futur."
-        )
+
+        # Générer les données démo pour connaître les bornes disponibles
+        _df_bounds = generate_demo_data()
+        _dt_min = _df_bounds["valid_local"].min().to_pydatetime()
+        _dt_max = _df_bounds["valid_local"].max().to_pydatetime()
+
+        # Toutes les heures disponibles dans les données
+        _all_times = sorted(_df_bounds["valid_local"].dt.to_pydatetime().tolist())
+        _all_dates = sorted(set(t.date() for t in _all_times))
+
+        col_a, col_b = st.columns(2)
+        with col_a:
+            start_date = st.date_input(
+                "📅 Du",
+                value=_dt_min.date(),
+                min_value=_dt_min.date(),
+                max_value=_dt_max.date(),
+                key="start_date",
+            )
+            _hours_start = sorted(set(
+                t.hour for t in _all_times if t.date() == start_date
+            )) or list(range(0, 24, 6))
+            start_hour = st.selectbox(
+                "🕐 Heure début",
+                options=_hours_start,
+                format_func=lambda h: f"{h:02d}:00",
+                index=0,
+                key="start_hour",
+            )
+        with col_b:
+            end_date = st.date_input(
+                "📅 Au",
+                value=_dt_max.date(),
+                min_value=_dt_min.date(),
+                max_value=_dt_max.date(),
+                key="end_date",
+            )
+            _hours_end = sorted(set(
+                t.hour for t in _all_times if t.date() == end_date
+            )) or list(range(0, 24, 6))
+            end_hour = st.selectbox(
+                "🕐 Heure fin",
+                options=_hours_end,
+                format_func=lambda h: f"{h:02d}:00",
+                index=len(_hours_end) - 1,
+                key="end_hour",
+            )
+
+        from datetime import datetime as _dt
+        time_start = _dt.combine(start_date, _dt.min.time()).replace(hour=start_hour)
+        time_end   = _dt.combine(end_date,   _dt.min.time()).replace(hour=end_hour)
+
+        # Sécurité : inverser si start > end
+        if time_start > time_end:
+            time_start, time_end = time_end, time_start
 
         st.divider()
 
@@ -855,7 +905,8 @@ def render_sidebar():
         "run_hour": run_hour,
         "swh_source": swh_source,
         "selected_vars": selected_vars,
-        "time_window": time_window,
+        "time_start": time_start,
+        "time_end":   time_end,
         "show_markers": show_markers,
         "show_thresholds": show_thresholds,
         "chart_type": chart_type,
@@ -1173,11 +1224,9 @@ def main():
 
     # ── Filtre temporel ───────────────────────────────────────
     now_local = datetime.now()
-    t_min = now_local + timedelta(hours=params["time_window"][0])
-    t_max = now_local + timedelta(hours=params["time_window"][1])
     df_filtered = df[
-        (df["valid_local"] >= pd.Timestamp(t_min)) &
-        (df["valid_local"] <= pd.Timestamp(t_max))
+        (df["valid_local"] >= pd.Timestamp(params["time_start"])) &
+        (df["valid_local"] <= pd.Timestamp(params["time_end"]))
     ].copy()
 
     if df_filtered.empty:

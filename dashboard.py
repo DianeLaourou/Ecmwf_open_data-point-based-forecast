@@ -120,6 +120,16 @@ TRANSLATIONS = {
         "wind_rose_title":   "Rose des Vents 10m",
         "time_label":        "Temps",
         "forecast_title":    "Prévisions — Sème",
+        # Word corrigé
+        "word_upload_title": "## 📄 Bulletin Word corrigé",
+        "word_upload_help":  "Uploadez le .docx corrigé. T°air, Visibilité et Pluie remplaceront les données pipeline.",
+        "word_upload_label": "Charger le bulletin Word corrigé (.docx)",
+        "word_loaded_ok":    "✅ Bulletin chargé — corrections appliquées",
+        "word_loaded_rows":  "pas de temps corrigés",
+        "word_load_error":   "❌ Erreur lecture Word",
+        "word_corrected_badge": "✏️ CORRIGÉ",
+        "word_cols_corrected":  "Colonnes corrigées",
+        "word_reset":        "🔄 Réinitialiser (données pipeline)",
     },
     "EN": {
         "lang_label":        "🌐 Language / Langue",
@@ -209,6 +219,16 @@ TRANSLATIONS = {
         "wind_rose_title":   "Wind Rose 10m",
         "time_label":        "Time",
         "forecast_title":    "Forecast — Sème",
+        # Corrected Word
+        "word_upload_title": "## 📄 Corrected Word bulletin",
+        "word_upload_help":  "Upload the corrected .docx. T°air, Visibility and Rain will override pipeline data.",
+        "word_upload_label": "Load corrected Word bulletin (.docx)",
+        "word_loaded_ok":    "✅ Bulletin loaded — corrections applied",
+        "word_loaded_rows":  "corrected time steps",
+        "word_load_error":   "❌ Error reading Word file",
+        "word_corrected_badge": "✏️ CORRECTED",
+        "word_cols_corrected":  "Corrected columns",
+        "word_reset":        "🔄 Reset (pipeline data)",
     },
 }
 
@@ -391,6 +411,121 @@ def load_pipeline_data(run_date, run_hour, swh_source):
         return df, None
     except Exception as e:
         return None, str(e)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# LECTURE DU WORD CORRIGÉ
+# ─────────────────────────────────────────────────────────────────────────────
+# Structure du Tableau 1 (index 1 dans doc.tables) :
+#   row 0 : en-têtes groupes
+#   row 1 : sous-en-têtes variables
+#   row 2 : sous-en-têtes unités  → col 0=Date, 1=Time, 8=Vis.(km), 9=T(°C), 11=Rain(%)
+#   rows 3+ : données
+
+# Correspondance mois abrégés anglais → numéro
+_MONTH_MAP = {"Jan":1,"Feb":2,"Mar":3,"Apr":4,"May":5,"Jun":6,
+              "Jul":7,"Aug":8,"Sep":9,"Oct":10,"Nov":11,"Dec":12}
+# Correspondance jour abrégé → (ignoré, on parse juste la date)
+
+def _parse_word_datetime(date_str: str, time_str: str) -> pd.Timestamp | None:
+    """Convertit 'Sat. 16 May' + '19:00' en Timestamp."""
+    try:
+        # Nettoyer : "Sat. 16 May" → ["16", "May"]
+        parts = date_str.replace(".", "").split()
+        # parts peut être ["Sat", "16", "May"] ou ["16", "May"]
+        day_num = None
+        month   = None
+        for p in parts:
+            if p.isdigit():
+                day_num = int(p)
+            elif p in _MONTH_MAP:
+                month = _MONTH_MAP[p]
+        if day_num is None or month is None:
+            return None
+        year  = datetime.now().year
+        hour  = int(time_str.split(":")[0])
+        minute= int(time_str.split(":")[1])
+        return pd.Timestamp(year=year, month=month, day=day_num, hour=hour, minute=minute)
+    except Exception:
+        return None
+
+
+def read_word_corrections(docx_bytes: bytes) -> tuple[pd.DataFrame | None, str | None]:
+    """
+    Lit le bulletin Word corrigé et extrait T(°C), Vis.(km), Rain(%)
+    depuis le Tableau 1.
+    Retourne (df_corrections, error_msg).
+    df_corrections colonnes : valid_local, t2m_c, vis_km, rain_pct
+    """
+    try:
+        from docx import Document
+        import io as _io
+        doc   = Document(_io.BytesIO(docx_bytes))
+        table = doc.tables[1]   # Tableau principal (28 lignes × 23 colonnes)
+
+        records = []
+        prev_date = ""
+        for row in table.rows[3:]:   # Sauter les 3 lignes d'en-têtes
+            cells    = [c.text.strip() for c in row.cells]
+            if len(cells) < 12:
+                continue
+            date_str = cells[0] if cells[0] else prev_date
+            if cells[0]:
+                prev_date = cells[0]
+            time_str = cells[1]
+            t_str    = cells[9]
+            vis_str  = cells[8]
+            rain_str = cells[11]
+
+            ts = _parse_word_datetime(date_str, time_str)
+            if ts is None:
+                continue
+
+            def _to_float(s):
+                try:    return float(s.replace(",", "."))
+                except: return np.nan
+
+            records.append({
+                "valid_local": ts,
+                "t2m_c":       _to_float(t_str),
+                "vis_km":      _to_float(vis_str),
+                "rain_pct":    _to_float(rain_str),
+            })
+
+        if not records:
+            return None, "Aucune donnée trouvée dans le tableau Word."
+
+        df = pd.DataFrame(records)
+        df = df.dropna(subset=["valid_local"])
+        return df, None
+
+    except Exception as e:
+        return None, str(e)
+
+
+def apply_word_corrections(df_base: pd.DataFrame, df_corr: pd.DataFrame) -> pd.DataFrame:
+    """
+    Fusionne les corrections Word dans le DataFrame de base.
+    Stratégie : merge sur valid_local (tolérance ±30 min),
+    les 3 colonnes corrigées remplacent les valeurs pipeline.
+    """
+    df = df_base.copy()
+    df["valid_local"] = pd.to_datetime(df["valid_local"])
+    df_corr = df_corr.copy()
+    df_corr["valid_local"] = pd.to_datetime(df_corr["valid_local"])
+
+    for _, corr_row in df_corr.iterrows():
+        ts = corr_row["valid_local"]
+        # Trouver la ligne la plus proche (tolérance 30 min)
+        delta = (df["valid_local"] - ts).abs()
+        idx   = delta.idxmin()
+        if delta[idx] <= pd.Timedelta("30min"):
+            for col in ["t2m_c", "vis_km", "rain_pct"]:
+                val = corr_row[col]
+                if not np.isnan(val):
+                    df.at[idx, col] = val
+
+    return df
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -618,6 +753,25 @@ def render_sidebar():
         time_end   = _dt2.combine(end_date,   _dt2.min.time()).replace(hour=end_hour)
         if time_start > time_end:
             time_start, time_end = time_end, time_start
+
+        st.divider()
+
+        # ── Upload Word corrigé ────────────────────────────────
+        st.markdown(T("word_upload_title"))
+        st.caption(T("word_upload_help"))
+        uploaded_word = st.file_uploader(
+            T("word_upload_label"),
+            type=["docx"],
+            key="word_uploader",
+        )
+        if uploaded_word is not None:
+            st.session_state["word_bytes"] = uploaded_word.read()
+            st.session_state["word_name"]  = uploaded_word.name
+        if st.session_state.get("word_bytes"):
+            if st.button(T("word_reset"), use_container_width=True):
+                st.session_state.pop("word_bytes", None)
+                st.session_state.pop("word_name",  None)
+                st.rerun()
 
         st.divider()
 
@@ -859,16 +1013,36 @@ def main():
     if df_filtered.empty:
         df_filtered = df.copy()
 
+    # ── Application des corrections Word ─────────────────────
+    is_corrected = False
+    word_info    = ""
+    if st.session_state.get("word_bytes"):
+        df_corr, err_word = read_word_corrections(st.session_state["word_bytes"])
+        if err_word:
+            st.error(f"{T('word_load_error')} : {err_word}")
+        else:
+            n_corrected  = len(df_corr)
+            df           = apply_word_corrections(df, df_corr)
+            df_filtered  = apply_word_corrections(df_filtered, df_corr)
+            is_corrected = True
+            word_info    = (f"{T('word_loaded_ok')} — "
+                            f"**{n_corrected}** {T('word_loaded_rows')} "
+                            f"· {T('word_cols_corrected')} : T°air, Visibilité, Pluie"
+                            f" · *{st.session_state.get('word_name','')}*")
+            st.success(word_info)
+
     # Header
     now_local  = datetime.now()
     demo_badge = (f" · <span style='color:#ffa94d;font-size:0.7rem;'>{T('header_demo_badge')}</span>"
                   if is_demo else "")
+    corr_badge = (f" · <span style='color:#69db7c;font-size:0.7rem;'>{T('word_corrected_badge')}</span>"
+                  if is_corrected else "")
     st.markdown(f"""
     <div class="marine-header">
         <div style="font-size:3rem;">🌊</div>
         <div>
             <div class="subtitle">METEO-BENIN · DPROM / SPAM</div>
-            <h1>{T('header_title')}{demo_badge}</h1>
+            <h1>{T('header_title')}{demo_badge}{corr_badge}</h1>
             <div style="color:#adb5bd;font-size:0.78rem;margin-top:0.2rem;">
                 📍 6.22°N, 2.63°E · Golfe de Guinée, Bénin &nbsp;|&nbsp;
                 {T('header_source')} &nbsp;|&nbsp;

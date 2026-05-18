@@ -1048,7 +1048,7 @@ def render_main_tabs(df: pd.DataFrame, df_filtered: pd.DataFrame, params: dict):
 
         styled = display_df.style
         if "swh_m" in display_df.columns:
-            styled = styled.applymap(color_swh, subset=["swh_m"])
+            styled = styled.map(color_swh, subset=["swh_m"])
 
         # Arrondi pour affichage
         numeric_cols = display_df.select_dtypes(include=[np.number]).columns

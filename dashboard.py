@@ -16,7 +16,20 @@ from plotly.subplots import make_subplots
 import io
 import sys
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone, time as dtime
+import pytz
+
+# Fuseau horaire Bénin — UTC+1 (fixe, pas de changement d'heure)
+TZ_BENIN = pytz.timezone("Africa/Porto-Novo")
+UTC_OFFSET = timedelta(hours=1)
+
+def now_local() -> datetime:
+    """Heure locale courante au Bénin (UTC+1)."""
+    return datetime.now(tz=TZ_BENIN).replace(tzinfo=None)
+
+def to_local(dt) -> pd.Timestamp:
+    """Convertit un Timestamp UTC en heure locale Bénin (UTC+1)."""
+    return pd.Timestamp(dt) + UTC_OFFSET
 
 # ─────────────────────────────────────────────────────────────────────────────
 # CONFIG PAGE
@@ -361,7 +374,8 @@ def thresh_name(th: dict) -> str:
 @st.cache_data(ttl=3600)
 def generate_demo_data() -> pd.DataFrame:
     np.random.seed(42)
-    now   = datetime.now().replace(minute=0, second=0, microsecond=0)
+    # Heure locale Bénin (UTC+1)
+    now   = now_local().replace(minute=0, second=0, microsecond=0)
     times = [now - timedelta(hours=6*i) for i in range(9, -21, -1)]
     n     = len(times)
     t     = np.linspace(0, 2*np.pi, n)
@@ -408,6 +422,34 @@ def load_pipeline_data(run_date, run_hour, swh_source):
         df_cop   = extractor.extract_copernicus(run_dt)
         df       = extractor.merge_sources(df_ecmwf, df_cop)
         df["valid_local"] = pd.to_datetime(df["valid_local"])
+        return df, None
+    except Exception as e:
+        return None, str(e)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# LECTURE DU CSV DEPUIS GITHUB (données réelles du pipeline)
+# ─────────────────────────────────────────────────────────────────────────────
+GITHUB_CSV_URL = (
+    "https://raw.githubusercontent.com/"
+    "DianeLaourou/Ecmwf_open_data-point-based-forecast/"
+    "main/latest_forecast.csv"
+)
+
+@st.cache_data(ttl=1800, show_spinner=False)   # rafraîchit toutes les 30 min
+def load_github_csv() -> tuple[pd.DataFrame | None, str | None]:
+    """
+    Lit latest_forecast.csv depuis le dépôt GitHub.
+    Retourne (df, None) si succès, (None, error_msg) si échec.
+    Les heures dans valid_local sont supposées UTC → converties en UTC+1.
+    """
+    try:
+        import urllib.request
+        with urllib.request.urlopen(GITHUB_CSV_URL, timeout=15) as resp:
+            content = resp.read().decode("utf-8")
+        import io as _io
+        df = pd.read_csv(_io.StringIO(content))
+        df["valid_local"] = pd.to_datetime(df["valid_local"]) + UTC_OFFSET
         return df, None
     except Exception as e:
         return None, str(e)
@@ -929,7 +971,7 @@ def render_main_tabs(df, df_filtered, params):
 
     # Exports
     with tab_export:
-        ts = datetime.now().strftime('%Y%m%d_%H%M')
+        ts = now_local().strftime('%Y%m%d_%H%M')
         st.markdown(f'<div class="section-title">{T("export_data_title")}</div>', unsafe_allow_html=True)
         c1,c2,c3 = st.columns(3)
         with c1:
@@ -994,18 +1036,38 @@ def main():
 
     params = render_sidebar()
 
-    # Chargement données
+    # ── Chargement des données ────────────────────────────────
+    # Priorité : 1) GitHub CSV (données réelles pipeline)
+    #            2) Pipeline live (local, si sélectionné)
+    #            3) Données démo (fallback)
+
+    is_demo   = False
+    is_github = False
+
     if params["data_source"] == T("data_live"):
+        # Tentative pipeline local (rare — nécessite xarray/cfgrib)
         with st.spinner(T("spinner_live")):
-            df, err = load_pipeline_data(params["run_date"], params["run_hour"], params["swh_source"])
+            df, err = load_pipeline_data(
+                params["run_date"], params["run_hour"], params["swh_source"])
         if err:
             st.error(f"{T('err_pipeline')} : {err}")
             st.info(T("info_fallback"))
             df, is_demo = generate_demo_data(), True
         else:
             is_demo = False
+
     else:
-        df, is_demo = generate_demo_data(), True
+        # Essayer de lire le CSV GitHub (données réelles du pipeline)
+        df_gh, err_gh = load_github_csv()
+        if df_gh is not None and not df_gh.empty:
+            df        = df_gh
+            is_github = True
+        else:
+            # Fallback démo si pas encore de CSV sur GitHub
+            df      = generate_demo_data()
+            is_demo = True
+            if err_gh:
+                st.caption(f"ℹ️ CSV GitHub non disponible ({err_gh}) — données démo affichées.")
 
     # Filtre temporel
     df_filtered = df[
@@ -1034,21 +1096,23 @@ def main():
             st.success(word_info)
 
     # Header
-    now_local  = datetime.now()
-    demo_badge = (f" · <span style='color:#ffa94d;font-size:0.7rem;'>{T('header_demo_badge')}</span>"
-                  if is_demo else "")
-    corr_badge = (f" · <span style='color:#69db7c;font-size:0.7rem;'>{T('word_corrected_badge')}</span>"
-                  if is_corrected else "")
+    now_loc   = now_local()
+    demo_badge   = (f" · <span style='color:#ffa94d;font-size:0.7rem;'>{T('header_demo_badge')}</span>"
+                    if is_demo else "")
+    github_badge = (f" · <span style='color:#69db7c;font-size:0.7rem;'>✅ PIPELINE</span>"
+                    if is_github else "")
+    corr_badge   = (f" · <span style='color:#69db7c;font-size:0.7rem;'>{T('word_corrected_badge')}</span>"
+                    if is_corrected else "")
     st.markdown(f"""
     <div class="marine-header">
         <div style="font-size:3rem;">🌊</div>
         <div>
             <div class="subtitle">METEO-BENIN · DPROM / SPAM</div>
-            <h1>{T('header_title')}{demo_badge}{corr_badge}</h1>
+            <h1>{T('header_title')}{demo_badge}{github_badge}{corr_badge}</h1>
             <div style="color:#adb5bd;font-size:0.78rem;margin-top:0.2rem;">
                 📍 6.22°N, 2.63°E · Golfe de Guinée, Bénin &nbsp;|&nbsp;
                 {T('header_source')} &nbsp;|&nbsp;
-                {T('header_updated')} : {now_local.strftime('%d/%m/%Y %H:%M')}
+                {T('header_updated')} : {now_loc.strftime('%d/%m/%Y %H:%M')} (UTC+1)
             </div>
         </div>
     </div>""", unsafe_allow_html=True)

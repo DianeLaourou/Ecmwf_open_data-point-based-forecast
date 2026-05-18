@@ -23,7 +23,7 @@ from datetime import datetime, timedelta
 # ─────────────────────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="Marine Forecast — Sème | METEO-BENIN",
-    page_icon="🌊",
+    page_icon="https://raw.githubusercontent.com/DianeLaourou/Ecmwf_open_data-point-based-forecast/main/logo_meteo_oval.png",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -732,21 +732,23 @@ def render_sidebar():
         _df_b   = generate_demo_data()
         _dt_min = _df_b["valid_local"].min().to_pydatetime()
         _dt_max = _df_b["valid_local"].max().to_pydatetime()
-        _times  = sorted(_df_b["valid_local"].dt.to_pydatetime().tolist())
+
+        # Toutes les heures 00→23 en H24
+        _all_hours = list(range(24))
 
         col_a, col_b = st.columns(2)
         with col_a:
             start_date = st.date_input(T("date_from"), value=_dt_min.date(),
                 min_value=_dt_min.date(), max_value=_dt_max.date(), key="sd")
-            _hs = sorted({t.hour for t in _times if t.date()==start_date}) or list(range(0,24,6))
-            start_hour = st.selectbox(T("hour_from"), _hs,
-                format_func=lambda h: f"{h:02d}:00", index=0, key="sh")
+            start_hour = st.selectbox(T("hour_from"), _all_hours,
+                format_func=lambda h: f"{h:02d}:00",
+                index=_dt_min.hour, key="sh")
         with col_b:
             end_date = st.date_input(T("date_to"), value=_dt_max.date(),
                 min_value=_dt_min.date(), max_value=_dt_max.date(), key="ed")
-            _he = sorted({t.hour for t in _times if t.date()==end_date}) or list(range(0,24,6))
-            end_hour = st.selectbox(T("hour_to"), _he,
-                format_func=lambda h: f"{h:02d}:00", index=len(_he)-1, key="eh")
+            end_hour = st.selectbox(T("hour_to"), _all_hours,
+                format_func=lambda h: f"{h:02d}:00",
+                index=_dt_max.hour, key="eh")
 
         from datetime import datetime as _dt2
         time_start = _dt2.combine(start_date, _dt2.min.time()).replace(hour=start_hour)

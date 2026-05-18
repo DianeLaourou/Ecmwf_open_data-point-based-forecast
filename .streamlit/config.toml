@@ -1,0 +1,18 @@
+# .streamlit/config.toml
+# Configuration Streamlit Cloud — Dashboard Marine Sème
+
+[server]
+headless = true
+enableCORS = false
+enableXsrfProtection = true
+
+[browser]
+gatherUsageStats = false
+
+[theme]
+base = "dark"
+primaryColor = "#15aabf"
+backgroundColor = "#0a1628"
+secondaryBackgroundColor = "#0d2240"
+textColor = "#e9ecef"
+font = "monospace"

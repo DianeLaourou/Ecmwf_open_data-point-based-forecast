@@ -987,25 +987,35 @@ def render_main_tabs(df, df_filtered, params):
 
         fig_wind = make_timeseries(df_filtered, wv, T("wind_speed_title"))
 
-        # Annotations vectorisées — sans iterrows
-        _x = df_filtered["valid_local"].dt.strftime("%Y-%m-%d %H:%M:%S").tolist()
+        # Annotations direction sur courbe wind10_spd_kt (subplot 1)
         if "wind10_dir" in df_filtered.columns and "wind10_spd_kt" in df_filtered.columns:
-            _c10 = [deg_to_card(d) for d in df_filtered["wind10_dir"].tolist()]
-            for x, y, c in zip(_x, df_filtered["wind10_spd_kt"].tolist(), _c10):
-                if c and pd.notna(y):
-                    fig_wind.add_annotation(x=x, y=y, text=f"<b>{c}</b>",
-                        showarrow=False, font=dict(size=8, color="#a9e34b"),
-                        yshift=12, row=1, col=1)
+            for _, row in df_filtered.iterrows():
+                card = deg_to_card(row.get("wind10_dir"))
+                if card and pd.notna(row.get("wind10_spd_kt")):
+                    fig_wind.add_annotation(
+                        x=str(row["valid_local"].strftime("%Y-%m-%d %H:%M:%S")),
+                        y=row["wind10_spd_kt"],
+                        text=f"<b>{card}</b>",
+                        showarrow=False,
+                        font=dict(size=8, color="#a9e34b"),
+                        yshift=12, row=1, col=1,
+                    )
 
+        # Annotations direction sur courbe wind100_spd_kt
         if "wind100_dir" in df_filtered.columns and "wind100_spd_kt" in df_filtered.columns:
             wv_list = [v for v in ["wind10_spd_kt","wind10_gust_kt","wind100_spd_kt"] if v in df_filtered.columns]
-            row100  = wv_list.index("wind100_spd_kt") + 1 if "wind100_spd_kt" in wv_list else 3
-            _c100 = [deg_to_card(d) for d in df_filtered["wind100_dir"].tolist()]
-            for x, y, c in zip(_x, df_filtered["wind100_spd_kt"].tolist(), _c100):
-                if c and pd.notna(y):
-                    fig_wind.add_annotation(x=x, y=y, text=f"<b>{c}</b>",
-                        showarrow=False, font=dict(size=8, color="#40c057"),
-                        yshift=12, row=row100, col=1)
+            row100 = wv_list.index("wind100_spd_kt") + 1 if "wind100_spd_kt" in wv_list else 3
+            for _, row in df_filtered.iterrows():
+                card = deg_to_card(row.get("wind100_dir"))
+                if card and pd.notna(row.get("wind100_spd_kt")):
+                    fig_wind.add_annotation(
+                        x=str(row["valid_local"].strftime("%Y-%m-%d %H:%M:%S")),
+                        y=row["wind100_spd_kt"],
+                        text=f"<b>{card}</b>",
+                        showarrow=False,
+                        font=dict(size=8, color="#40c057"),
+                        yshift=12, row=row100, col=1,
+                    )
 
         st.plotly_chart(fig_wind, use_container_width=True)
 

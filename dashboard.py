@@ -23,8 +23,8 @@ import pytz
 TZ_BENIN   = pytz.timezone("Africa/Porto-Novo")
 UTC_OFFSET = timedelta(hours=1)
 
-# Logo METEO-BENIN (base64)
-_LOGO_URI = _LOGO_URI
+# Logo METEO-BENIN
+_LOGO_URI = "data:image/png;base64,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"
 
 def now_local() -> datetime:
     return datetime.now(tz=TZ_BENIN).replace(tzinfo=None)
@@ -38,7 +38,7 @@ GITHUB_TREE_URL = "https://api.github.com/repos/DianeLaourou/Ecmwf_open_data-poi
 # ─────────────────────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="Marine Forecast — Sème | METEO-BENIN",
-    page_icon=_LOGO_URI,
+    page_icon="data:image/png;base64,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",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -785,7 +785,7 @@ def render_sidebar():
         <div style='text-align:center;padding:0.8rem 0 1rem 0;'>
             <div style='background:rgba(13,34,64,0.8);border:2px solid rgba(21,170,191,0.4);
                         border-radius:12px;padding:0.8rem;display:inline-block;'>
-                <img src="_LOGO_PLACEHOLDER_" style='width:90px;height:90px;object-fit:contain;display:block;'/>
+                <img src="" + _LOGO_URI + " style='width:90px;height:90px;object-fit:contain;display:block;'/>
             </div>
             <div style='color:#15aabf;font-size:0.7rem;letter-spacing:2px;text-transform:uppercase;font-weight:700;margin-top:0.6rem;'>METEO-BENIN</div>
             <div style='color:#adb5bd;font-size:0.65rem;margin-top:0.2rem;'>DPROM / SPAM</div>
@@ -889,7 +889,7 @@ def render_sidebar():
             st.session_state["word_bytes"] = uploaded_word.read()
             st.session_state["word_name"]  = uploaded_word.name
         if st.session_state.get("word_bytes"):
-            if st.button(T("word_reset"), use_container_width=True):
+            if st.button(T("word_reset"), width='stretch'):
                 st.session_state.pop("word_bytes", None)
                 st.session_state.pop("word_name",  None)
                 st.rerun()
@@ -951,7 +951,7 @@ def render_kpi_row(df):
 # ONGLETS
 # ─────────────────────────────────────────────────────────────────────────────
 def render_main_tabs(df, df_filtered, params):
-    lang = st.session_state.get("lang","FR")  # une seule lecture, réutilisée partout
+    lang     = st.session_state.get("lang","FR")
     selected = params["selected_vars"]
 
     tab_ts,tab_vent,tab_swell,tab_corr,tab_data,tab_export = st.tabs([
@@ -965,7 +965,7 @@ def render_main_tabs(df, df_filtered, params):
             t_from = df_filtered["valid_local"].min().strftime("%d/%m")
             t_to   = df_filtered["valid_local"].max().strftime("%d/%m %H:%M")
             fig    = make_timeseries(df_filtered, selected, title=f"{T('forecast_title')} ({t_from} → {t_to})")
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width='stretch')
             col_exp,_ = st.columns([1,5])
             with col_exp:
                 try:
@@ -996,29 +996,37 @@ def render_main_tabs(df, df_filtered, params):
 
         fig_wind = make_timeseries(df_filtered, wv, T("wind_speed_title"))
 
-        # Annotations vectorisées — sans iterrows (plus rapide)
-        _x_str = df_filtered["valid_local"].dt.strftime("%Y-%m-%d %H:%M:%S").tolist()
+        # Annotations direction sur courbe wind10_spd_kt (subplot 1)
         if "wind10_dir" in df_filtered.columns and "wind10_spd_kt" in df_filtered.columns:
-            _c10 = [deg_to_card(d) for d in df_filtered["wind10_dir"].tolist()]
-            _y10 = df_filtered["wind10_spd_kt"].tolist()
-            for _x, _y, _c in zip(_x_str, _y10, _c10):
-                if _c and pd.notna(_y):
-                    fig_wind.add_annotation(x=_x, y=_y, text=f"<b>{_c}</b>",
-                        showarrow=False, font=dict(size=8, color="#a9e34b"),
-                        yshift=12, row=1, col=1)
+            for _, row in df_filtered.iterrows():
+                card = deg_to_card(row.get("wind10_dir"))
+                if card and pd.notna(row.get("wind10_spd_kt")):
+                    fig_wind.add_annotation(
+                        x=str(row["valid_local"].strftime("%Y-%m-%d %H:%M:%S")),
+                        y=row["wind10_spd_kt"],
+                        text=f"<b>{card}</b>",
+                        showarrow=False,
+                        font=dict(size=8, color="#a9e34b"),
+                        yshift=12, row=1, col=1,
+                    )
 
+        # Annotations direction sur courbe wind100_spd_kt
         if "wind100_dir" in df_filtered.columns and "wind100_spd_kt" in df_filtered.columns:
-            _wv = [v for v in ["wind10_spd_kt","wind10_gust_kt","wind100_spd_kt"] if v in df_filtered.columns]
-            _r100 = _wv.index("wind100_spd_kt") + 1 if "wind100_spd_kt" in _wv else 3
-            _c100 = [deg_to_card(d) for d in df_filtered["wind100_dir"].tolist()]
-            _y100 = df_filtered["wind100_spd_kt"].tolist()
-            for _x, _y, _c in zip(_x_str, _y100, _c100):
-                if _c and pd.notna(_y):
-                    fig_wind.add_annotation(x=_x, y=_y, text=f"<b>{_c}</b>",
-                        showarrow=False, font=dict(size=8, color="#40c057"),
-                        yshift=12, row=_r100, col=1)
+            wv_list = [v for v in ["wind10_spd_kt","wind10_gust_kt","wind100_spd_kt"] if v in df_filtered.columns]
+            row100 = wv_list.index("wind100_spd_kt") + 1 if "wind100_spd_kt" in wv_list else 3
+            for _, row in df_filtered.iterrows():
+                card = deg_to_card(row.get("wind100_dir"))
+                if card and pd.notna(row.get("wind100_spd_kt")):
+                    fig_wind.add_annotation(
+                        x=str(row["valid_local"].strftime("%Y-%m-%d %H:%M:%S")),
+                        y=row["wind100_spd_kt"],
+                        text=f"<b>{card}</b>",
+                        showarrow=False,
+                        font=dict(size=8, color="#40c057"),
+                        yshift=12, row=row100, col=1,
+                    )
 
-        st.plotly_chart(fig_wind, use_container_width=True)
+        st.plotly_chart(fig_wind, width='stretch')
 
         # ── Roses des vents 10m et 100m côte à côte ───────────────────────
         lang_vv = st.session_state.get("lang","FR")
@@ -1029,14 +1037,14 @@ def render_main_tabs(df, df_filtered, params):
             st.plotly_chart(
                 make_wind_rose(df_filtered, dir_col="wind10_dir", spd_col="wind10_spd_kt",
                                title=title_10m),
-                use_container_width=True, key="wind_rose_10m"
+                width='stretch', key="wind_rose_10m"
             )
         with c_r2:
             if "wind100_dir" in df_filtered.columns and "wind100_spd_kt" in df_filtered.columns:
                 st.plotly_chart(
                     make_wind_rose(df_filtered, dir_col="wind100_dir", spd_col="wind100_spd_kt",
                                    title=title_100m),
-                    use_container_width=True, key="wind_rose_100m"
+                    width='stretch', key="wind_rose_100m"
                 )
 
     # Swell & Courants
@@ -1044,23 +1052,23 @@ def render_main_tabs(df, df_filtered, params):
         c1,c2 = st.columns(2)
         with c1:
             sv = [v for v in ["swh_m","sw1_ht_m","sw2_ht_m"] if v in df_filtered.columns]
-            st.plotly_chart(make_timeseries(df_filtered, sv, T("wave_height_title")), use_container_width=True)
+            st.plotly_chart(make_timeseries(df_filtered, sv, T("wave_height_title")), width='stretch')
         with c2:
-            st.plotly_chart(make_swell_compass(df_filtered), use_container_width=True)
+            st.plotly_chart(make_swell_compass(df_filtered), width='stretch')
         c3,c4 = st.columns(2)
         with c3:
             pv = [v for v in ["sw1_period_s","sw2_period_s"] if v in df_filtered.columns]
-            if pv: st.plotly_chart(make_timeseries(df_filtered,pv,T("swell_per_title")), use_container_width=True)
+            if pv: st.plotly_chart(make_timeseries(df_filtered,pv,T("swell_per_title")), width='stretch')
         with c4:
             cv = [v for v in ["cur_spd_kt","cur_dir"] if v in df_filtered.columns]
-            if cv: st.plotly_chart(make_timeseries(df_filtered,cv,T("current_title")), use_container_width=True)
+            if cv: st.plotly_chart(make_timeseries(df_filtered,cv,T("current_title")), width='stretch')
 
     # Corrélations
     with tab_corr:
         num_vars = [k for k in VAR_META if k in df_filtered.columns
                     and df_filtered[k].dtype in [float,int,np.float64,np.int64]]
         if len(num_vars) >= 2:
-            st.plotly_chart(make_correlation_heatmap(df_filtered,num_vars), use_container_width=True)
+            st.plotly_chart(make_correlation_heatmap(df_filtered,num_vars), width='stretch')
         st.markdown(f'<div class="section-title">{T("scatter_title")}</div>', unsafe_allow_html=True)
         c1,c2 = st.columns(2)
         with c1:
@@ -1083,7 +1091,7 @@ def render_main_tabs(df, df_filtered, params):
             fig_sc.update_layout(**th, height=380,
                 xaxis_title=f"{sx} ({ux})", yaxis_title=f"{sy} ({uy})",
                 title=dict(text=f"{sx} vs {sy}",font=dict(color="#15aabf",size=13)))
-            st.plotly_chart(fig_sc, use_container_width=True)
+            st.plotly_chart(fig_sc, width='stretch')
 
     # Données brutes
     with tab_data:
@@ -1102,7 +1110,7 @@ def render_main_tabs(df, df_filtered, params):
             styled = styled.map(color_swh, subset=["swh_m"])
         nc = display_df.select_dtypes(include=[np.number]).columns
         styled = styled.format({c:"{:.2f}" for c in nc}, na_rep="—")
-        st.dataframe(styled, use_container_width=True, height=450)
+        st.dataframe(styled, width='stretch', height=450)
 
     # Exports
     with tab_export:
@@ -1111,18 +1119,18 @@ def render_main_tabs(df, df_filtered, params):
         c1,c2,c3 = st.columns(3)
         with c1:
             st.download_button(T("export_csv"), data=df_to_csv_bytes(df_filtered),
-                file_name=f"seme_{ts}.csv", mime="text/csv", use_container_width=True)
+                file_name=f"seme_{ts}.csv", mime="text/csv", width='stretch')
         with c2:
             st.download_button(T("export_xlsx"), data=df_to_excel_bytes(df_filtered),
                 file_name=f"seme_{ts}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True)
+                width='stretch')
         with c3:
             json_str = df_filtered.assign(
                 valid_local=df_filtered["valid_local"].dt.strftime("%Y-%m-%dT%H:%M:%S")
             ).to_json(orient="records", indent=2, force_ascii=False)
             st.download_button(T("export_json"), data=json_str.encode("utf-8"),
-                file_name=f"seme_{ts}.json", mime="application/json", use_container_width=True)
+                file_name=f"seme_{ts}.json", mime="application/json", width='stretch')
 
         st.markdown(f'<div class="section-title">{T("export_png_title")}</div>', unsafe_allow_html=True)
         if params["selected_vars"]:
@@ -1130,7 +1138,7 @@ def render_main_tabs(df, df_filtered, params):
                 img = fig_to_bytes(make_timeseries(df_filtered, params["selected_vars"]))
                 ext = "png" if isinstance(img,bytes) and img[:4]==b'\x89PNG' else "html"
                 st.download_button(T("export_png"), data=img,
-                    file_name=f"seme_chart_{ts}.{ext}", mime=f"image/{ext}", use_container_width=True)
+                    file_name=f"seme_chart_{ts}.{ext}", mime=f"image/{ext}", width='stretch')
             except Exception as e:
                 st.warning(f"{T('export_png_warn')} : {e}")
 
@@ -1159,7 +1167,7 @@ def render_main_tabs(df, df_filtered, params):
         )
         st.text_area(T("bulletin_textarea"), value=bulletin, height=340)
         st.download_button(T("bulletin_dl"), data=bulletin.encode("utf-8"),
-            file_name=f"bulletin_seme_{ts}.txt", mime="text/plain", use_container_width=True)
+            file_name=f"bulletin_seme_{ts}.txt", mime="text/plain", width='stretch')
 
 
 # ─────────────────────────────────────────────────────────────────────────────

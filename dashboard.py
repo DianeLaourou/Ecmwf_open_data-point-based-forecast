@@ -589,10 +589,18 @@ def plotly_theme():
     return dict(
         paper_bgcolor="rgba(10,22,40,0)", plot_bgcolor="rgba(13,34,64,0.5)",
         font=dict(color="#e9ecef", family="monospace,sans-serif", size=12),
-        xaxis=dict(gridcolor="rgba(21,170,191,0.12)", linecolor="rgba(21,170,191,0.3)", showgrid=True),
+        xaxis=dict(
+            gridcolor="rgba(21,170,191,0.12)",
+            linecolor="rgba(21,170,191,0.3)",
+            showgrid=True,
+            dtick=3 * 3600 * 1000,   # pas de 3h en millisecondes
+            tickformat="%H:%M\n%d/%m",
+            tickangle=0,
+            tickfont=dict(size=9),
+        ),
         yaxis=dict(gridcolor="rgba(21,170,191,0.12)", linecolor="rgba(21,170,191,0.3)", showgrid=True),
         legend=dict(bgcolor="rgba(10,22,40,0.7)", bordercolor="rgba(21,170,191,0.3)", borderwidth=1),
-        margin=dict(l=60,r=30,t=40,b=50), hovermode="x unified",
+        margin=dict(l=60,r=30,t=40,b=60), hovermode="x unified",
     )
 
 def fig_to_bytes(fig):

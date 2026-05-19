@@ -23,6 +23,9 @@ import pytz
 TZ_BENIN   = pytz.timezone("Africa/Porto-Novo")
 UTC_OFFSET = timedelta(hours=1)
 
+# Logo METEO-BENIN (base64)
+_LOGO_URI = _LOGO_URI
+
 def now_local() -> datetime:
     return datetime.now(tz=TZ_BENIN).replace(tzinfo=None)
 
@@ -35,7 +38,7 @@ GITHUB_TREE_URL = "https://api.github.com/repos/DianeLaourou/Ecmwf_open_data-poi
 # ─────────────────────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="Marine Forecast — Sème | METEO-BENIN",
-    page_icon="data:image/png;base64,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",
+    page_icon=_LOGO_URI,
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -782,7 +785,7 @@ def render_sidebar():
         <div style='text-align:center;padding:0.8rem 0 1rem 0;'>
             <div style='background:rgba(13,34,64,0.8);border:2px solid rgba(21,170,191,0.4);
                         border-radius:12px;padding:0.8rem;display:inline-block;'>
-                <img src="data:image/png;base64,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" style='width:90px;height:90px;object-fit:contain;display:block;'/>
+                <img src="_LOGO_PLACEHOLDER_" style='width:90px;height:90px;object-fit:contain;display:block;'/>
             </div>
             <div style='color:#15aabf;font-size:0.7rem;letter-spacing:2px;text-transform:uppercase;font-weight:700;margin-top:0.6rem;'>METEO-BENIN</div>
             <div style='color:#adb5bd;font-size:0.65rem;margin-top:0.2rem;'>DPROM / SPAM</div>
@@ -948,7 +951,7 @@ def render_kpi_row(df):
 # ONGLETS
 # ─────────────────────────────────────────────────────────────────────────────
 def render_main_tabs(df, df_filtered, params):
-    lang     = st.session_state.get("lang","FR")
+    lang = st.session_state.get("lang","FR")  # une seule lecture, réutilisée partout
     selected = params["selected_vars"]
 
     tab_ts,tab_vent,tab_swell,tab_corr,tab_data,tab_export = st.tabs([
@@ -993,35 +996,27 @@ def render_main_tabs(df, df_filtered, params):
 
         fig_wind = make_timeseries(df_filtered, wv, T("wind_speed_title"))
 
-        # Annotations direction sur courbe wind10_spd_kt (subplot 1)
+        # Annotations vectorisées — sans iterrows (plus rapide)
+        _x_str = df_filtered["valid_local"].dt.strftime("%Y-%m-%d %H:%M:%S").tolist()
         if "wind10_dir" in df_filtered.columns and "wind10_spd_kt" in df_filtered.columns:
-            for _, row in df_filtered.iterrows():
-                card = deg_to_card(row.get("wind10_dir"))
-                if card and pd.notna(row.get("wind10_spd_kt")):
-                    fig_wind.add_annotation(
-                        x=str(row["valid_local"].strftime("%Y-%m-%d %H:%M:%S")),
-                        y=row["wind10_spd_kt"],
-                        text=f"<b>{card}</b>",
-                        showarrow=False,
-                        font=dict(size=8, color="#a9e34b"),
-                        yshift=12, row=1, col=1,
-                    )
+            _c10 = [deg_to_card(d) for d in df_filtered["wind10_dir"].tolist()]
+            _y10 = df_filtered["wind10_spd_kt"].tolist()
+            for _x, _y, _c in zip(_x_str, _y10, _c10):
+                if _c and pd.notna(_y):
+                    fig_wind.add_annotation(x=_x, y=_y, text=f"<b>{_c}</b>",
+                        showarrow=False, font=dict(size=8, color="#a9e34b"),
+                        yshift=12, row=1, col=1)
 
-        # Annotations direction sur courbe wind100_spd_kt
         if "wind100_dir" in df_filtered.columns and "wind100_spd_kt" in df_filtered.columns:
-            wv_list = [v for v in ["wind10_spd_kt","wind10_gust_kt","wind100_spd_kt"] if v in df_filtered.columns]
-            row100 = wv_list.index("wind100_spd_kt") + 1 if "wind100_spd_kt" in wv_list else 3
-            for _, row in df_filtered.iterrows():
-                card = deg_to_card(row.get("wind100_dir"))
-                if card and pd.notna(row.get("wind100_spd_kt")):
-                    fig_wind.add_annotation(
-                        x=str(row["valid_local"].strftime("%Y-%m-%d %H:%M:%S")),
-                        y=row["wind100_spd_kt"],
-                        text=f"<b>{card}</b>",
-                        showarrow=False,
-                        font=dict(size=8, color="#40c057"),
-                        yshift=12, row=row100, col=1,
-                    )
+            _wv = [v for v in ["wind10_spd_kt","wind10_gust_kt","wind100_spd_kt"] if v in df_filtered.columns]
+            _r100 = _wv.index("wind100_spd_kt") + 1 if "wind100_spd_kt" in _wv else 3
+            _c100 = [deg_to_card(d) for d in df_filtered["wind100_dir"].tolist()]
+            _y100 = df_filtered["wind100_spd_kt"].tolist()
+            for _x, _y, _c in zip(_x_str, _y100, _c100):
+                if _c and pd.notna(_y):
+                    fig_wind.add_annotation(x=_x, y=_y, text=f"<b>{_c}</b>",
+                        showarrow=False, font=dict(size=8, color="#40c057"),
+                        yshift=12, row=_r100, col=1)
 
         st.plotly_chart(fig_wind, use_container_width=True)
 

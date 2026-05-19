@@ -686,6 +686,19 @@ def make_timeseries(df, selected_vars, title=""):
                 tick0=y_min,
                 row=i, col=1
             )
+
+        # Configuration spéciale pour T°air et SST : pas de 2°C, adapté aux données
+        if var in ["t2m_c", "sst_c"] and not df[var].dropna().empty:
+            data_min = df[var].dropna().min()
+            data_max = df[var].dropna().max()
+            y_min = int(data_min) - 1
+            y_max = int(data_max) + 2
+            fig.update_yaxes(
+                range=[y_min, y_max],
+                dtick=2,
+                tick0=y_min,
+                row=i, col=1
+            )
     th = plotly_theme()
     for i in range(1, n+1):
         ax = f"xaxis{'' if i==1 else i}"
@@ -948,6 +961,7 @@ def render_kpi_row(df):
 # ─────────────────────────────────────────────────────────────────────────────
 # ONGLETS
 # ─────────────────────────────────────────────────────────────────────────────
+@st.fragment
 def render_main_tabs(df, df_filtered, params):
     lang = st.session_state.get("lang","FR")
 

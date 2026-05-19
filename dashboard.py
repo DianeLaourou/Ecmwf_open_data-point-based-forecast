@@ -616,7 +616,7 @@ def plotly_theme():
         ),
         yaxis=dict(gridcolor="rgba(21,170,191,0.12)", linecolor="rgba(21,170,191,0.3)", showgrid=True),
         legend=dict(bgcolor="rgba(10,22,40,0.7)", bordercolor="rgba(21,170,191,0.3)", borderwidth=1),
-        margin=dict(l=60,r=30,t=40,b=60), hovermode="x unified",
+        margin=dict(l=60,r=30,t=40,b=60), hovermode="x unified", transition={"duration": 0},
     )
 
 def fig_to_bytes(fig):
@@ -644,7 +644,7 @@ def make_timeseries(df, selected_vars, title=""):
     df = df.copy()
     x_vals = df["valid_local"].dt.strftime("%Y-%m-%d %H:%M:%S")
 
-    fig = make_subplots(rows=n, cols=1, shared_xaxes=True, vertical_spacing=0.04,
+    fig = make_subplots(rows=n, cols=1, shared_xaxes=True, vertical_spacing=0.03,
         subplot_titles=[VAR_META.get(v,{}).get(lang,{}).get("label",v) for v in selected_vars])
     for i, var in enumerate(selected_vars, 1):
         if var not in df.columns: continue
@@ -661,7 +661,7 @@ def make_timeseries(df, selected_vars, title=""):
                 hovertemplate=f"<b>{short}</b>: %{{y:.2f}} {unit}<extra></extra>",
             ), row=i, col=1)
         else:
-            fig.add_trace(go.Scatter(
+            fig.add_trace(go.Scattergl(
                 x=x_vals, y=df[var],
                 mode="lines+markers" if chart_t != "area" else "lines",
                 name=short,
@@ -695,8 +695,8 @@ def make_timeseries(df, selected_vars, title=""):
         ay = f"yaxis{'' if i==1 else i}"
         fig.update_layout(**{ay: dict(gridcolor="rgba(21,170,191,0.12)",linecolor="rgba(21,170,191,0.3)",showgrid=True)})
     fig.update_layout(paper_bgcolor=th["paper_bgcolor"], plot_bgcolor=th["plot_bgcolor"],
-        font=th["font"], legend=th["legend"], margin=th["margin"], hovermode="x unified",
-        height=max(220*n,320),
+        font=th["font"], legend=th["legend"], margin=th["margin"], hovermode="x unified", transition={"duration": 0},
+        height=max(180*n,280),
         title=dict(text=title,font=dict(color="#15aabf",size=14)) if title else None)
     return fig
 
@@ -996,35 +996,28 @@ def render_main_tabs(df, df_filtered, params):
 
         fig_wind = make_timeseries(df_filtered, wv, T("wind_speed_title"))
 
-        # Annotations direction sur courbe wind10_spd_kt (subplot 1)
+        # Annotations vectorisées — 1 sur 2 pour réduire charge navigateur
+        _x_str = df_filtered["valid_local"].dt.strftime("%Y-%m-%d %H:%M:%S").tolist()
         if "wind10_dir" in df_filtered.columns and "wind10_spd_kt" in df_filtered.columns:
-            for _, row in df_filtered.iterrows():
-                card = deg_to_card(row.get("wind10_dir"))
-                if card and pd.notna(row.get("wind10_spd_kt")):
-                    fig_wind.add_annotation(
-                        x=str(row["valid_local"].strftime("%Y-%m-%d %H:%M:%S")),
-                        y=row["wind10_spd_kt"],
-                        text=f"<b>{card}</b>",
-                        showarrow=False,
-                        font=dict(size=8, color="#a9e34b"),
-                        yshift=12, row=1, col=1,
-                    )
+            _c10 = [deg_to_card(d) for d in df_filtered["wind10_dir"].tolist()]
+            _y10 = df_filtered["wind10_spd_kt"].tolist()
+            for idx, (_x, _y, _c) in enumerate(zip(_x_str, _y10, _c10)):
+                if idx % 2 == 0 and _c and pd.notna(_y):
+                    fig_wind.add_annotation(x=_x, y=_y, text=f"<b>{_c}</b>",
+                        showarrow=False, font=dict(size=8, color="#a9e34b"),
+                        yshift=12, row=1, col=1)
 
         # Annotations direction sur courbe wind100_spd_kt
         if "wind100_dir" in df_filtered.columns and "wind100_spd_kt" in df_filtered.columns:
             wv_list = [v for v in ["wind10_spd_kt","wind10_gust_kt","wind100_spd_kt"] if v in df_filtered.columns]
             row100 = wv_list.index("wind100_spd_kt") + 1 if "wind100_spd_kt" in wv_list else 3
-            for _, row in df_filtered.iterrows():
-                card = deg_to_card(row.get("wind100_dir"))
-                if card and pd.notna(row.get("wind100_spd_kt")):
-                    fig_wind.add_annotation(
-                        x=str(row["valid_local"].strftime("%Y-%m-%d %H:%M:%S")),
-                        y=row["wind100_spd_kt"],
-                        text=f"<b>{card}</b>",
-                        showarrow=False,
-                        font=dict(size=8, color="#40c057"),
-                        yshift=12, row=row100, col=1,
-                    )
+            _c100 = [deg_to_card(d) for d in df_filtered["wind100_dir"].tolist()]
+            _y100 = df_filtered["wind100_spd_kt"].tolist()
+            for idx, (_x, _y, _c) in enumerate(zip(_x_str, _y100, _c100)):
+                if idx % 2 == 0 and _c and pd.notna(_y):
+                    fig_wind.add_annotation(x=_x, y=_y, text=f"<b>{_c}</b>",
+                        showarrow=False, font=dict(size=8, color="#40c057"),
+                        yshift=12, row=row100, col=1)
 
         st.plotly_chart(fig_wind, width='stretch')
 
@@ -1081,7 +1074,7 @@ def render_main_tabs(df, df_filtered, params):
             mx = VAR_META.get(var_x,{}); my = VAR_META.get(var_y,{})
             sx = mx.get(lang,{}).get("short",var_x); sy = my.get(lang,{}).get("short",var_y)
             ux = mx.get("unit","");                  uy = my.get("unit","")
-            fig_sc = go.Figure(go.Scatter(
+            fig_sc = go.Figure(go.Scattergl(
                 x=df_filtered[var_x], y=df_filtered[var_y], mode="markers",
                 marker=dict(color=df_filtered["valid_local"].astype(np.int64)//10**9,
                     colorscale="Viridis",size=7,opacity=0.8,

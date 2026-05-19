@@ -948,7 +948,6 @@ def render_kpi_row(df):
 # ─────────────────────────────────────────────────────────────────────────────
 # ONGLETS
 # ─────────────────────────────────────────────────────────────────────────────
-@st.fragment
 def render_main_tabs(df, df_filtered, params):
     lang = st.session_state.get("lang","FR")
 

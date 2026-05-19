@@ -448,7 +448,7 @@ def load_github_csv():
         with urllib.request.urlopen(GITHUB_RAW_URL + latest, timeout=15) as resp:
             content = resp.read().decode("utf-8")
         df = pd.read_csv(_io.StringIO(content))
-        df["valid_local"] = pd.to_datetime(df["valid_local"]) + UTC_OFFSET
+        df["valid_local"] = pd.to_datetime(df["valid_local"])
         return clean_df(df), f"📄 {latest}"
     except Exception as e:
         return None, str(e)

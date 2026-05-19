@@ -593,10 +593,11 @@ def plotly_theme():
             gridcolor="rgba(21,170,191,0.12)",
             linecolor="rgba(21,170,191,0.3)",
             showgrid=True,
-            dtick=3 * 3600 * 1000,   # pas de 3h en millisecondes
-            tickformat="%H:%M\n%d/%m",
+            dtick=3 * 3600 * 1000,      # pas de 3h en millisecondes
+            tickformat="%H:%M\n%d/%m",   # heure locale telle quelle
             tickangle=0,
             tickfont=dict(size=9),
+            type="date",
         ),
         yaxis=dict(gridcolor="rgba(21,170,191,0.12)", linecolor="rgba(21,170,191,0.3)", showgrid=True),
         legend=dict(bgcolor="rgba(10,22,40,0.7)", bordercolor="rgba(21,170,191,0.3)", borderwidth=1),
@@ -622,6 +623,12 @@ def make_timeseries(df, selected_vars, title=""):
     n    = len(selected_vars)
     if n == 0:
         return go.Figure()
+
+    # Convertir valid_local en string pour que Plotly affiche
+    # l'heure locale exacte sans conversion UTC
+    df = df.copy()
+    x_vals = df["valid_local"].dt.strftime("%Y-%m-%d %H:%M:%S")
+
     fig = make_subplots(rows=n, cols=1, shared_xaxes=True, vertical_spacing=0.04,
         subplot_titles=[VAR_META.get(v,{}).get(lang,{}).get("label",v) for v in selected_vars])
     for i, var in enumerate(selected_vars, 1):
@@ -634,13 +641,13 @@ def make_timeseries(df, selected_vars, title=""):
         chart_t = st.session_state.get("chart_type_val", "lines")
         if chart_t == "bars":
             fig.add_trace(go.Bar(
-                x=df["valid_local"], y=df[var], name=short,
+                x=x_vals, y=df[var], name=short,
                 marker_color=f"rgba({r},{g},{b},0.8)",
                 hovertemplate=f"<b>{short}</b>: %{{y:.2f}} {unit}<extra></extra>",
             ), row=i, col=1)
         else:
             fig.add_trace(go.Scatter(
-                x=df["valid_local"], y=df[var],
+                x=x_vals, y=df[var],
                 mode="lines+markers" if chart_t != "area" else "lines",
                 name=short,
                 line=dict(color=color,width=2), marker=dict(size=4,color=color),
@@ -972,7 +979,8 @@ def render_main_tabs(df, df_filtered, params):
                 card = deg_to_card(row.get("wind10_dir"))
                 if card and pd.notna(row.get("wind10_spd_kt")):
                     fig_wind.add_annotation(
-                        x=row["valid_local"], y=row["wind10_spd_kt"],
+                        x=str(row["valid_local"].strftime("%Y-%m-%d %H:%M:%S")),
+                        y=row["wind10_spd_kt"],
                         text=f"<b>{card}</b>",
                         showarrow=False,
                         font=dict(size=8, color="#a9e34b"),
@@ -987,7 +995,8 @@ def render_main_tabs(df, df_filtered, params):
                 card = deg_to_card(row.get("wind100_dir"))
                 if card and pd.notna(row.get("wind100_spd_kt")):
                     fig_wind.add_annotation(
-                        x=row["valid_local"], y=row["wind100_spd_kt"],
+                        x=str(row["valid_local"].strftime("%Y-%m-%d %H:%M:%S")),
+                        y=row["wind100_spd_kt"],
                         text=f"<b>{card}</b>",
                         showarrow=False,
                         font=dict(size=8, color="#40c057"),

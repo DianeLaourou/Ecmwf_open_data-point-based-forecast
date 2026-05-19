@@ -27,11 +27,8 @@ def now_local() -> datetime:
     return datetime.now(tz=TZ_BENIN).replace(tzinfo=None)
 
 # ── URL CSV GitHub ────────────────────────────────────────────────────────────
-GITHUB_CSV_URL = (
-    "https://raw.githubusercontent.com/"
-    "DianeLaourou/Ecmwf_open_data-point-based-forecast/"
-    "main/latest_forecast.csv"
-)
+GITHUB_RAW_URL  = "https://raw.githubusercontent.com/DianeLaourou/Ecmwf_open_data-point-based-forecast/main/"
+GITHUB_TREE_URL = "https://api.github.com/repos/DianeLaourou/Ecmwf_open_data-point-based-forecast/git/trees/main?recursive=0"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # CONFIG PAGE
@@ -430,14 +427,23 @@ def load_pipeline_data(run_date, run_hour, swh_source):
 
 @st.cache_data(ttl=1800, show_spinner=False)
 def load_github_csv():
-    """Lit latest_forecast.csv depuis GitHub (données réelles pipeline)."""
+    """Cherche le dernier bulletin CSV sur GitHub via git tree API."""
     try:
-        import urllib.request, io as _io
-        with urllib.request.urlopen(GITHUB_CSV_URL, timeout=15) as resp:
+        import urllib.request, json, io as _io
+        with urllib.request.urlopen(GITHUB_TREE_URL, timeout=15) as resp:
+            tree = json.loads(resp.read().decode("utf-8"))
+        csv_files = sorted([
+            item["path"] for item in tree.get("tree", [])
+            if item["path"].startswith("bulletin_marine_seme_") and item["path"].endswith(".csv")
+        ])
+        if not csv_files:
+            return None, "Aucun CSV bulletin trouvé."
+        latest = csv_files[-1]
+        with urllib.request.urlopen(GITHUB_RAW_URL + latest, timeout=15) as resp:
             content = resp.read().decode("utf-8")
         df = pd.read_csv(_io.StringIO(content))
         df["valid_local"] = pd.to_datetime(df["valid_local"]) + UTC_OFFSET
-        return clean_df(df), None
+        return clean_df(df), f"📄 {latest}"
     except Exception as e:
         return None, str(e)
 
@@ -822,9 +828,8 @@ def render_sidebar():
         # Période — basée sur les vraies données GitHub si disponibles
         st.markdown(T("period_title"))
 
-        # Charger les vraies données pour les bornes (sans spinner)
-        _df_real, _ = load_github_csv()
-        _df_b = _df_real if _df_real is not None and not _df_real.empty else generate_demo_data()
+        # Bornes depuis session_state (df chargé dans main() avant sidebar)
+        _df_b = st.session_state.get("df_loaded", generate_demo_data())
 
         # Bornes réelles : début = première occurrence 19h, fin = dernière valeur
         _df_b["valid_local"] = pd.to_datetime(_df_b["valid_local"])
@@ -982,35 +987,25 @@ def render_main_tabs(df, df_filtered, params):
 
         fig_wind = make_timeseries(df_filtered, wv, T("wind_speed_title"))
 
-        # Annotations direction sur courbe wind10_spd_kt (subplot 1)
+        # Annotations vectorisées — sans iterrows
+        _x = df_filtered["valid_local"].dt.strftime("%Y-%m-%d %H:%M:%S").tolist()
         if "wind10_dir" in df_filtered.columns and "wind10_spd_kt" in df_filtered.columns:
-            for _, row in df_filtered.iterrows():
-                card = deg_to_card(row.get("wind10_dir"))
-                if card and pd.notna(row.get("wind10_spd_kt")):
-                    fig_wind.add_annotation(
-                        x=str(row["valid_local"].strftime("%Y-%m-%d %H:%M:%S")),
-                        y=row["wind10_spd_kt"],
-                        text=f"<b>{card}</b>",
-                        showarrow=False,
-                        font=dict(size=8, color="#a9e34b"),
-                        yshift=12, row=1, col=1,
-                    )
+            _c10 = [deg_to_card(d) for d in df_filtered["wind10_dir"].tolist()]
+            for x, y, c in zip(_x, df_filtered["wind10_spd_kt"].tolist(), _c10):
+                if c and pd.notna(y):
+                    fig_wind.add_annotation(x=x, y=y, text=f"<b>{c}</b>",
+                        showarrow=False, font=dict(size=8, color="#a9e34b"),
+                        yshift=12, row=1, col=1)
 
-        # Annotations direction sur courbe wind100_spd_kt
         if "wind100_dir" in df_filtered.columns and "wind100_spd_kt" in df_filtered.columns:
             wv_list = [v for v in ["wind10_spd_kt","wind10_gust_kt","wind100_spd_kt"] if v in df_filtered.columns]
-            row100 = wv_list.index("wind100_spd_kt") + 1 if "wind100_spd_kt" in wv_list else 3
-            for _, row in df_filtered.iterrows():
-                card = deg_to_card(row.get("wind100_dir"))
-                if card and pd.notna(row.get("wind100_spd_kt")):
-                    fig_wind.add_annotation(
-                        x=str(row["valid_local"].strftime("%Y-%m-%d %H:%M:%S")),
-                        y=row["wind100_spd_kt"],
-                        text=f"<b>{card}</b>",
-                        showarrow=False,
-                        font=dict(size=8, color="#40c057"),
-                        yshift=12, row=row100, col=1,
-                    )
+            row100  = wv_list.index("wind100_spd_kt") + 1 if "wind100_spd_kt" in wv_list else 3
+            _c100 = [deg_to_card(d) for d in df_filtered["wind100_dir"].tolist()]
+            for x, y, c in zip(_x, df_filtered["wind100_spd_kt"].tolist(), _c100):
+                if c and pd.notna(y):
+                    fig_wind.add_annotation(x=x, y=y, text=f"<b>{c}</b>",
+                        showarrow=False, font=dict(size=8, color="#40c057"),
+                        yshift=12, row=row100, col=1)
 
         st.plotly_chart(fig_wind, use_container_width=True)
 
@@ -1163,32 +1158,27 @@ def main():
     if "lang" not in st.session_state:
         st.session_state["lang"] = "FR"
 
-    params = render_sidebar()
-
-    # ── Chargement données ────────────────────────────────────
+    # ── Chargement AVANT sidebar ────────────────────────────
     is_demo   = False
     is_github = False
+    csv_name  = ""
 
-    if params["data_source"] == T("data_live"):
-        with st.spinner(T("spinner_live")):
-            df, err = load_pipeline_data(params["run_date"], params["run_hour"], params["swh_source"])
-        if err:
-            st.error(f"{T('err_pipeline')} : {err}")
-            st.info(T("info_fallback"))
-            df, is_demo = generate_demo_data(), True
-        else:
-            is_demo = False
+    df_gh, info_gh = load_github_csv()
+    if df_gh is not None and not df_gh.empty:
+        df        = df_gh
+        is_github = True
+        csv_name  = info_gh or ""
     else:
-        # Essayer GitHub CSV en priorité
-        df_gh, err_gh = load_github_csv()
-        if df_gh is not None and not df_gh.empty:
-            df        = df_gh
-            is_github = True
-        else:
-            df      = generate_demo_data()
-            is_demo = True
-            if err_gh:
-                st.caption(f"ℹ️ CSV GitHub non disponible ({err_gh}) — données démo affichées.")
+        df      = generate_demo_data()
+        is_demo = True
+        if info_gh:
+            st.caption(f"ℹ️ Données non disponibles — données démo affichées.")
+
+    st.session_state["df_loaded"] = df
+
+    params = render_sidebar()
+
+    # (données déjà chargées ci-dessus)
 
     # Filtre temporel
     df_filtered = df[

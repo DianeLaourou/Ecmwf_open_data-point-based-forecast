@@ -12,7 +12,6 @@
 
 import argparse
 import sys
-import os
 from datetime import datetime, timedelta
 import pandas as pd
 import config
@@ -66,20 +65,35 @@ ENG_DAYS_FULL = {
 }
 
 def ordinal(n):
+    """Retourne le suffixe ordinal : 1st, 2nd, 3rd, 4th..."""
     if 11 <= n <= 13:
         return f"{n}th"
     return {1:"st", 2:"nd", 3:"rd"}.get(n % 10, "th")
 
 def generate_warning(df: pd.DataFrame, run_dt: datetime) -> str:
+    """
+    Génère automatiquement le texte du Warning à partir des données.
+
+    Analyse :
+      - SWH maximum et moment d'occurrence
+      - Vent maximum et moment d'occurrence
+      - Tendance générale (hausse, baisse, stable)
+
+    Retourne le texte du Warning en anglais.
+    """
     df = df.copy()
     df["valid_local"] = pd.to_datetime(df["valid_local"])
 
-    swh_col   = "swh_m"
-    swh_vals  = df[swh_col].dropna()
-    swh_max   = swh_vals.max()
-    idx_max   = swh_vals.idxmax()
+    # ── SWH ──────────────────────────────────────────────────────────────
+    swh_col = "swh_m"
+    swh_vals = df[swh_col].dropna()
+    swh_max  = swh_vals.max()
+    swh_min  = swh_vals.min()
+    swh_mean = swh_vals.mean()
+    idx_max  = swh_vals.idxmax()
     swh_peak_time = df.loc[idx_max, "valid_local"]
 
+    # ── Vent ──────────────────────────────────────────────────────────────
     wind_vals = df["wind10_spd_kt"].dropna()
     wind_max  = wind_vals.max()
     idx_wind  = wind_vals.idxmax()
@@ -89,8 +103,9 @@ def generate_warning(df: pd.DataFrame, run_dt: datetime) -> str:
     gust_vals = df["wind10_gust_kt"].dropna()
     gust_max  = gust_vals.max() if not gust_vals.empty else None
 
+    # ── Tendance SWH ──────────────────────────────────────────────────────
     n = len(swh_vals)
-    first_half  = swh_vals.iloc[:n//2].mean()
+    first_half = swh_vals.iloc[:n//2].mean()
     second_half = swh_vals.iloc[n//2:].mean()
     if second_half > first_half + 0.2:
         trend = "gradually increasing"
@@ -99,6 +114,7 @@ def generate_warning(df: pd.DataFrame, run_dt: datetime) -> str:
     else:
         trend = "relatively stable"
 
+    # ── Formatage de la date/heure du pic ────────────────────────────────
     def fmt_time(dt):
         day  = ENG_DAYS_FULL[dt.weekday()]
         date = f"{dt.day}{ordinal(dt.day)}"
@@ -106,52 +122,42 @@ def generate_warning(df: pd.DataFrame, run_dt: datetime) -> str:
         hour = dt.strftime("%I:%M %p").lstrip("0")
         return f"{day}, {date} {mon} at {hour}"
 
+    # ── Construction du texte ─────────────────────────────────────────────
+
+    # Cas 1 : Aucune alerte (SWH < 2.0m ET vent < seuil)
     if swh_max < config.ALERT_SWH_DANGER and wind_max < config.ALERT_WIND_WARNING:
         text = (f"Warning: None. Significant wave heights are expected to remain "
                 f"below {config.ALERT_SWH_DANGER:.1f} m throughout the forecast period, "
                 f"peaking at {swh_max:.1f} m. "
                 f"Wind speeds will remain below {config.ALERT_WIND_WARNING} knots.")
+
+    # Cas 2 : SWH entre 1.6 et 2.0m — avertissement mais PAS de Warning texte
     elif swh_max >= config.ALERT_SWH_WARNING and swh_max < config.ALERT_SWH_DANGER:
         text = (f"Warning: None. Significant wave heights are expected to be {trend}, "
                 f"peaking at {swh_max:.1f} m around "
                 f"{fmt_time(swh_peak_time)} (local time). "
                 f"Mariners are advised to exercise caution.")
+
+    # Cas 3 : Alerte SWH ≥ 2.0m (danger)
     elif swh_max >= config.ALERT_SWH_DANGER:
         text = (f"Warning: Significant wave heights are expected to increase "
                 f"{trend}, reaching a peak of {swh_max:.1f} meters around "
                 f"{fmt_time(swh_peak_time)} (local time).")
+
+    # Cas 4 : Alerte vent
     else:
         text = (f"Warning: Wind speeds are expected to reach {wind_max:.0f} knots "
                 f"from {wind_dir_peak} around {fmt_time(wind_peak_time)} (local time).")
 
-    if swh_max >= config.ALERT_SWH_DANGER and wind_max >= config.ALERT_WIND_WARNING:
+    # Ajouter info vent fort seulement si SWH ≥ 2.0m (vrai Warning)
+    if (swh_max >= config.ALERT_SWH_DANGER and
+            wind_max >= config.ALERT_WIND_WARNING):
         gust_txt = f" with gusts up to {gust_max:.0f} knots" if gust_max else ""
         text += (f" Wind speeds are also expected to reach {wind_max:.0f} knots{gust_txt} "
                  f"from {wind_dir_peak}.")
 
     return text
 
-
-# =============================================================================
-# EXPORT CSV POUR LE DASHBOARD
-# =============================================================================
-
-def export_csv_for_dashboard(df: pd.DataFrame, output_path: str):
-    """
-    Exporte le DataFrame au format CSV dans le même dossier que le Excel,
-    sous le nom fixe 'latest_forecast.csv'.
-    Ce fichier sera poussé sur GitHub et lu par le dashboard Streamlit.
-    """
-    folder   = os.path.dirname(os.path.abspath(output_path))
-    csv_path = os.path.join(folder, "latest_forecast.csv")
-    df.to_csv(csv_path, index=False, encoding="utf-8")
-    print(f"  ✅ CSV dashboard → {csv_path}")
-    return csv_path
-
-
-# =============================================================================
-# PIPELINE PRINCIPAL
-# =============================================================================
 
 def run(run_dt, swh_source, output_path):
 
@@ -165,20 +171,20 @@ def run(run_dt, swh_source, output_path):
     print("=" * 65)
 
     # 1. ECMWF Open Data
-    print("\n[1/6] Extraction ECMWF Open Data...")
+    print("\n[1/5] Extraction ECMWF Open Data...")
     df_ecmwf = extractor.extract_ecmwf(run_dt)
 
     # 2. Copernicus Marine
-    print("\n[2/6] Extraction Copernicus Marine...")
+    print("\n[2/5] Extraction Copernicus Marine...")
     df_cop = extractor.extract_copernicus(run_dt)
 
     # 3. Fusion
-    print("\n[3/6] Fusion des sources...")
+    print("\n[3/5] Fusion des sources...")
     df = extractor.merge_sources(df_ecmwf, df_cop)
     print(f"  → {len(df)} lignes dans le tableau final.")
 
-    # 4. Génération du Warning
-    print("\n[4/6] Génération du texte Warning...")
+    # 4. Génération du Warning (Mod 6)
+    print("\n[4/5] Génération du texte Warning...")
     warning_text = generate_warning(df, run_dt)
     print(f"\n  {'─'*60}")
     print(f"  {warning_text}")
@@ -188,41 +194,28 @@ def run(run_dt, swh_source, output_path):
     print("\n[5/6] Export Excel...")
     exporter.export_excel(df, run_dt, output_path, warning_text=warning_text)
 
-    # 6. Export Word
+    # 6. Export Word (Mod 7)
     print("\n[6/6] Export Word (bulletin complet)...")
     word_path = output_path.replace(".xlsx", ".docx") if output_path else None
     word_exporter.generate_word_bulletin(df, run_dt, warning_text, word_path)
 
     # 7. Export CSV pour le dashboard Streamlit
-    print("\n[+] Export CSV pour dashboard Streamlit...")
-    csv_path = export_csv_for_dashboard(df, output_path)
-
-    # 8. Upload vers Google Drive (si configuré)
-    folder_id = getattr(config, "GDRIVE_FOLDER_ID", None)
-    if folder_id and folder_id != "VOTRE_FOLDER_ID_ICI":
-        print("\n[+] Upload vers Google Drive...")
-        try:
-            import gdrive
-            if output_path and os.path.exists(output_path):
-                gdrive.upload_to_drive(output_path, folder_id)
-            if word_path and os.path.exists(word_path):
-                gdrive.upload_to_drive(word_path, folder_id)
-        except Exception as e:
-            print(f"  ⚠️  Upload Drive non disponible : {e}")
+    import os
+    csv_path = os.path.join(os.path.dirname(os.path.abspath(output_path)), "latest_forecast.csv")
+    df.to_csv(csv_path, index=False, encoding="utf-8")
+    print(f"\n  ✅ CSV dashboard → {csv_path}")
 
     print()
     print("=" * 65)
     print(f"  ✅ Pipeline terminé → {output_path}")
-    print(f"  ✅ CSV dashboard    → {csv_path}")
     print("=" * 65)
     print()
-
-    return csv_path   # retourné pour que le .bat puisse le vérifier
 
 
 if __name__ == "__main__":
     args = parse_args()
 
+    # Résoudre la date/heure
     if args.date and args.hour is not None:
         run_dt = datetime.strptime(f"{args.date} {args.hour:02d}:00", "%Y-%m-%d %H:%M")
     elif args.date:
@@ -230,6 +223,7 @@ if __name__ == "__main__":
     else:
         run_dt = get_latest_run()
 
+    # Résoudre la source SWH
     if args.swh:
         config.SWH_SOURCE = args.swh
 

@@ -926,7 +926,6 @@ def render_sidebar():
 # ─────────────────────────────────────────────────────────────────────────────
 # KPI ROW
 # ─────────────────────────────────────────────────────────────────────────────
-@st.fragment
 def render_kpi_row(df):
     cols = st.columns(6)
     kpis = [
@@ -951,7 +950,6 @@ def render_kpi_row(df):
 # ─────────────────────────────────────────────────────────────────────────────
 # ONGLETS
 # ─────────────────────────────────────────────────────────────────────────────
-@st.fragment
 def render_main_tabs(df, df_filtered, params):
     lang     = st.session_state.get("lang","FR")
     selected = params["selected_vars"]
@@ -1179,21 +1177,27 @@ def main():
     if "lang" not in st.session_state:
         st.session_state["lang"] = "FR"
 
-    # ── Chargement AVANT sidebar ────────────────────────────
+    # ── Chargement une seule fois par session (session_state) ──────────
     is_demo   = False
     is_github = False
     csv_name  = ""
 
-    df_gh, info_gh = load_github_csv()
-    if df_gh is not None and not df_gh.empty:
-        df        = df_gh
-        is_github = True
-        csv_name  = info_gh or ""
-    else:
-        df      = generate_demo_data()
-        is_demo = True
-        if info_gh:
-            st.caption(f"ℹ️ Données non disponibles — données démo affichées.")
+    if "df_session" not in st.session_state or "df_source" not in st.session_state:
+        # Premier chargement uniquement
+        df_gh, info_gh = load_github_csv()
+        if df_gh is not None and not df_gh.empty:
+            st.session_state["df_session"] = df_gh
+            st.session_state["df_source"]  = "github"
+            st.session_state["csv_name"]   = info_gh or ""
+        else:
+            st.session_state["df_session"] = generate_demo_data()
+            st.session_state["df_source"]  = "demo"
+            st.session_state["csv_name"]   = ""
+
+    df       = st.session_state["df_session"]
+    is_github = st.session_state["df_source"] == "github"
+    is_demo   = st.session_state["df_source"] == "demo"
+    csv_name  = st.session_state.get("csv_name", "")
 
     st.session_state["df_loaded"] = df
 

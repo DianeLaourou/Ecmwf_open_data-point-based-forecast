@@ -756,8 +756,6 @@ def render_sidebar():
             <div style='color:#15aabf;font-size:0.7rem;letter-spacing:2px;text-transform:uppercase;font-weight:700;margin-top:0.6rem;'>METEO-BENIN</div>
             <div style='color:#adb5bd;font-size:0.65rem;margin-top:0.2rem;'>DPROM / SPAM</div>
         </div>
-            <div style='color:#15aabf;font-size:0.7rem;letter-spacing:2px;text-transform:uppercase;font-weight:700;margin-top:0.4rem;'>METEO-BENIN</div>
-            <div style='color:#adb5bd;font-size:0.65rem;margin-top:0.2rem;'>DPROM / SPAM</div>
         </div>""", unsafe_allow_html=True)
 
         # ── Sélecteur de langue (en premier) ──────────────────
@@ -960,7 +958,7 @@ def render_main_tabs(df, df_filtered, params):
 
         fig_wind = make_timeseries(df_filtered, wv, T("wind_speed_title"))
 
-        # Ajouter annotations direction sur la courbe wind10_spd_kt (subplot 1)
+        # Annotations direction sur courbe wind10_spd_kt (subplot 1)
         if "wind10_dir" in df_filtered.columns and "wind10_spd_kt" in df_filtered.columns:
             for _, row in df_filtered.iterrows():
                 card = deg_to_card(row.get("wind10_dir"))
@@ -973,23 +971,39 @@ def render_main_tabs(df, df_filtered, params):
                         yshift=12, row=1, col=1,
                     )
 
+        # Annotations direction sur courbe wind100_spd_kt
+        if "wind100_dir" in df_filtered.columns and "wind100_spd_kt" in df_filtered.columns:
+            wv_list = [v for v in ["wind10_spd_kt","wind10_gust_kt","wind100_spd_kt"] if v in df_filtered.columns]
+            row100 = wv_list.index("wind100_spd_kt") + 1 if "wind100_spd_kt" in wv_list else 3
+            for _, row in df_filtered.iterrows():
+                card = deg_to_card(row.get("wind100_dir"))
+                if card and pd.notna(row.get("wind100_spd_kt")):
+                    fig_wind.add_annotation(
+                        x=row["valid_local"], y=row["wind100_spd_kt"],
+                        text=f"<b>{card}</b>",
+                        showarrow=False,
+                        font=dict(size=8, color="#40c057"),
+                        yshift=12, row=row100, col=1,
+                    )
+
         st.plotly_chart(fig_wind, use_container_width=True)
 
         # ── Roses des vents 10m et 100m côte à côte ───────────────────────
-        lang_v = st.session_state.get("lang","FR")
-        title_100 = "Rose des Vents 100m" if lang_v=="FR" else "Wind Rose 100m"
+        lang_vv = st.session_state.get("lang","FR")
+        title_10m  = T("wind_rose_title")
+        title_100m = "Rose des Vents 100m" if lang_vv=="FR" else "Wind Rose 100m"
         c_r1, c_r2 = st.columns(2)
         with c_r1:
             st.plotly_chart(
                 make_wind_rose(df_filtered, dir_col="wind10_dir", spd_col="wind10_spd_kt",
-                               title=T("wind_rose_title")),
+                               title=title_10m),
                 use_container_width=True, key="wind_rose_10m"
             )
         with c_r2:
             if "wind100_dir" in df_filtered.columns and "wind100_spd_kt" in df_filtered.columns:
                 st.plotly_chart(
                     make_wind_rose(df_filtered, dir_col="wind100_dir", spd_col="wind100_spd_kt",
-                                   title=title_100),
+                                   title=title_100m),
                     use_container_width=True, key="wind_rose_100m"
                 )
 

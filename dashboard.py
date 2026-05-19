@@ -689,7 +689,11 @@ def make_timeseries(df, selected_vars, title=""):
 def make_wind_rose(df, dir_col="wind10_dir", spd_col="wind10_spd_kt", title=None):
     if dir_col not in df.columns or spd_col not in df.columns:
         return go.Figure()
-    labels = ["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSO","SO","OSO","O","ONO","NO","NNO"]
+    lang_r = st.session_state.get("lang","FR")
+    if lang_r == "FR":
+        labels = ["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSO","SO","OSO","O","ONO","NO","NNO"]
+    else:
+        labels = ["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSW","SW","WSW","W","WNW","NW","NNW"]
     bins   = np.arange(0, 361, 22.5, dtype=float)
     dirs   = df[dir_col].dropna().astype(float).to_numpy()
     speeds = df[spd_col].dropna().astype(float).to_numpy()
@@ -965,9 +969,14 @@ def render_main_tabs(df, df_filtered, params):
         wv = [v for v in ["wind10_spd_kt","wind10_gust_kt","wind100_spd_kt"] if v in df_filtered.columns]
 
         # Conversion degrés → cardinal pour annotations
+        lang_a = st.session_state.get("lang","FR")
         def deg_to_card(deg):
-            dirs = ["N","NNE","NE","ENE","E","ESE","SE","SSE",
-                    "S","SSO","SO","OSO","O","ONO","NO","NNO"]
+            if lang_a == "FR":
+                dirs = ["N","NNE","NE","ENE","E","ESE","SE","SSE",
+                        "S","SSO","SO","OSO","O","ONO","NO","NNO"]
+            else:
+                dirs = ["N","NNE","NE","ENE","E","ESE","SE","SSE",
+                        "S","SSW","SW","WSW","W","WNW","NW","NNW"]
             try: return dirs[round(float(deg)/22.5) % 16]
             except: return ""
 

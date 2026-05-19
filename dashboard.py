@@ -802,26 +802,41 @@ def render_sidebar():
 
         st.divider()
 
-        # Période
+        # Période — basée sur les vraies données GitHub si disponibles
         st.markdown(T("period_title"))
-        _df_b   = generate_demo_data()
+
+        # Charger les vraies données pour les bornes (sans spinner)
+        _df_real, _ = load_github_csv()
+        _df_b = _df_real if _df_real is not None and not _df_real.empty else generate_demo_data()
+
+        # Bornes réelles : début = première occurrence 19h, fin = dernière valeur
+        _df_b["valid_local"] = pd.to_datetime(_df_b["valid_local"])
         _dt_min = _df_b["valid_local"].min().to_pydatetime()
         _dt_max = _df_b["valid_local"].max().to_pydatetime()
         _times  = sorted(_df_b["valid_local"].dt.to_pydatetime().tolist())
 
+        # Valeur par défaut : toute la période du bulletin
+        _def_start = _dt_min
+        _def_end   = _dt_max
+
         col_a, col_b = st.columns(2)
         with col_a:
-            start_date = st.date_input(T("date_from"), value=_dt_min.date(),
+            start_date = st.date_input(T("date_from"), value=_def_start.date(),
                 min_value=_dt_min.date(), max_value=_dt_max.date(), key="sd")
-            _hs = sorted({t.hour for t in _times if t.date()==start_date}) or list(range(0,24,6))
+            _hs = sorted({t.hour for t in _times if t.date()==start_date}) or list(range(0,24,3))
+            # Index par défaut = heure 19h si disponible
+            _def_sh = _def_start.hour if start_date == _def_start.date() else _hs[0]
+            _sh_idx = _hs.index(_def_sh) if _def_sh in _hs else 0
             start_hour = st.selectbox(T("hour_from"), _hs,
-                format_func=lambda h: f"{h:02d}:00", index=0, key="sh")
+                format_func=lambda h: f"{h:02d}:00", index=_sh_idx, key="sh")
         with col_b:
-            end_date = st.date_input(T("date_to"), value=_dt_max.date(),
+            end_date = st.date_input(T("date_to"), value=_def_end.date(),
                 min_value=_dt_min.date(), max_value=_dt_max.date(), key="ed")
-            _he = sorted({t.hour for t in _times if t.date()==end_date}) or list(range(0,24,6))
+            _he = sorted({t.hour for t in _times if t.date()==end_date}) or list(range(0,24,3))
+            _def_eh = _def_end.hour if end_date == _def_end.date() else _he[-1]
+            _eh_idx = _he.index(_def_eh) if _def_eh in _he else len(_he)-1
             end_hour = st.selectbox(T("hour_to"), _he,
-                format_func=lambda h: f"{h:02d}:00", index=len(_he)-1, key="eh")
+                format_func=lambda h: f"{h:02d}:00", index=_eh_idx, key="eh")
 
         from datetime import datetime as _dt2
         time_start = _dt2.combine(start_date, _dt2.min.time()).replace(hour=start_hour)
@@ -933,17 +948,32 @@ def render_main_tabs(df, df_filtered, params):
 
     # Vent & Rose
     with tab_vent:
-        # ── Vitesses de vent ──────────────────────────────────────────────
+        # ── Vitesses de vent avec annotations direction cardinale ─────────
         wv = [v for v in ["wind10_spd_kt","wind10_gust_kt","wind100_spd_kt"] if v in df_filtered.columns]
-        st.plotly_chart(make_timeseries(df_filtered, wv, T("wind_speed_title")),
-                        use_container_width=True)
 
-        # ── Direction du vent 10m ─────────────────────────────────────────
-        if "wind10_dir" in df_filtered.columns:
-            st.markdown(f'<div class="section-title">{T("wind_dir_title")}</div>',
-                        unsafe_allow_html=True)
-            st.plotly_chart(make_timeseries(df_filtered, ["wind10_dir"], T("wind_dir_title")),
-                            use_container_width=True)
+        # Conversion degrés → cardinal pour annotations
+        def deg_to_card(deg):
+            dirs = ["N","NNE","NE","ENE","E","ESE","SE","SSE",
+                    "S","SSO","SO","OSO","O","ONO","NO","NNO"]
+            try: return dirs[round(float(deg)/22.5) % 16]
+            except: return ""
+
+        fig_wind = make_timeseries(df_filtered, wv, T("wind_speed_title"))
+
+        # Ajouter annotations direction sur la courbe wind10_spd_kt (subplot 1)
+        if "wind10_dir" in df_filtered.columns and "wind10_spd_kt" in df_filtered.columns:
+            for _, row in df_filtered.iterrows():
+                card = deg_to_card(row.get("wind10_dir"))
+                if card and pd.notna(row.get("wind10_spd_kt")):
+                    fig_wind.add_annotation(
+                        x=row["valid_local"], y=row["wind10_spd_kt"],
+                        text=f"<b>{card}</b>",
+                        showarrow=False,
+                        font=dict(size=8, color="#a9e34b"),
+                        yshift=12, row=1, col=1,
+                    )
+
+        st.plotly_chart(fig_wind, use_container_width=True)
 
         # ── Roses des vents 10m et 100m côte à côte ───────────────────────
         lang_v = st.session_state.get("lang","FR")

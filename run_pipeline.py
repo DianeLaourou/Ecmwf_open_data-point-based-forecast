@@ -201,9 +201,30 @@ def run(run_dt, swh_source, output_path):
 
     # 7. Export CSV pour le dashboard Streamlit
     import os
-    csv_path = os.path.join(os.path.dirname(os.path.abspath(output_path)), "latest_forecast.csv")
-    df.to_csv(csv_path, index=False, encoding="utf-8")
-    print(f"\n  ✅ CSV dashboard → {csv_path}")
+
+    CARDINAL_TO_DEG = {
+        "N":0,"NNE":22.5,"NE":45,"ENE":67.5,
+        "E":90,"ESE":112.5,"SE":135,"SSE":157.5,
+        "S":180,"SSW":202.5,"SW":225,"WSW":247.5,
+        "W":270,"WNW":292.5,"NW":315,"NNW":337.5,
+        "SSO":202.5,"SO":225,"OSO":247.5,
+        "O":270,"ONO":292.5,"NO":315,"NNO":337.5,
+    }
+
+    folder   = os.path.dirname(os.path.abspath(output_path))
+    date_str = run_dt.strftime("%d%m%Y")
+    run_str  = f"{run_dt.hour:02d}Z"
+    csv_name = f"bulletin_marine_seme_{date_str}_{run_str}.csv"
+    csv_path = os.path.join(folder, csv_name)
+
+    df_csv = df.copy()
+    for col in ["wind10_dir","wind100_dir","sw1_dir","sw2_dir","cur_dir"]:
+        if col in df_csv.columns:
+            df_csv[col] = df_csv[col].map(
+                lambda x: CARDINAL_TO_DEG.get(str(x).strip(), None) if pd.notna(x) else None
+            )
+    df_csv.to_csv(csv_path, index=False, encoding="utf-8")
+    print(f"\n  ✅ CSV bulletin → {csv_path}")
 
     print()
     print("=" * 65)

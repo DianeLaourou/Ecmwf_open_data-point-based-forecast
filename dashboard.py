@@ -85,10 +85,9 @@ TRANSLATIONS = {
         "warn_danger":       "Conditions dangereuses attendues.",
         "warn_caution":      "Conditions modérées. Prudence recommandée.",
         "warn_none":         "Warning : Aucune. Conditions clémentes.",
-        "tab_ts":            "📈 Séries temporelles",
+        "tab_meteo":         "🌤️ Météo",
+        "tab_mer":           "🌊 Mer",
         "tab_wind":          "💨 Vent & Rose",
-        "tab_swell":         "🌊 Swell & Courants",
-        "tab_corr":          "🔗 Corrélations",
         "tab_data":          "📋 Données brutes",
         "tab_export":        "💾 Exports",
         "select_var_hint":   "👈 Sélectionnez au moins une variable dans la barre latérale.",
@@ -184,10 +183,9 @@ TRANSLATIONS = {
         "warn_danger":       "Dangerous conditions expected.",
         "warn_caution":      "Moderate conditions. Caution advised.",
         "warn_none":         "Warning: None. Calm conditions.",
-        "tab_ts":            "📈 Time Series",
+        "tab_meteo":         "🌤️ Weather",
+        "tab_mer":           "🌊 Sea",
         "tab_wind":          "💨 Wind & Rose",
-        "tab_swell":         "🌊 Swell & Currents",
-        "tab_corr":          "🔗 Correlations",
         "tab_data":          "📋 Raw Data",
         "tab_export":        "💾 Exports",
         "select_var_hint":   "👈 Please select at least one variable in the sidebar.",
@@ -950,141 +948,110 @@ def render_kpi_row(df):
 # ─────────────────────────────────────────────────────────────────────────────
 # ONGLETS
 # ─────────────────────────────────────────────────────────────────────────────
+@st.fragment
 def render_main_tabs(df, df_filtered, params):
-    lang     = st.session_state.get("lang","FR")
-    selected = params["selected_vars"]
+    lang = st.session_state.get("lang","FR")
 
-    tab_ts,tab_vent,tab_swell,tab_corr,tab_data,tab_export = st.tabs([
-        T("tab_ts"),T("tab_wind"),T("tab_swell"),T("tab_corr"),T("tab_data"),T("tab_export")])
+    tab_meteo,tab_vent,tab_mer,tab_data,tab_export = st.tabs([
+        T("tab_meteo"), T("tab_wind"), T("tab_mer"), T("tab_data"), T("tab_export")])
 
-    # Séries temporelles
-    with tab_ts:
-        if not selected:
-            st.info(T("select_var_hint"))
-        else:
-            t_from = df_filtered["valid_local"].min().strftime("%d/%m")
-            t_to   = df_filtered["valid_local"].max().strftime("%d/%m %H:%M")
-            fig    = make_timeseries(df_filtered, selected, title=f"{T('forecast_title')} ({t_from} → {t_to})")
-            st.plotly_chart(fig, width='stretch')
-            col_exp,_ = st.columns([1,5])
-            with col_exp:
-                try:
-                    img = fig_to_bytes(fig)
-                    ext = "png" if isinstance(img,bytes) and img[:4]==b'\x89PNG' else "html"
-                    st.download_button(T("export_png"), data=img,
-                        file_name=f"seme_{datetime.now().strftime('%Y%m%d_%H%M')}.{ext}",
-                        mime=f"image/{ext}", key="dl_ts")
-                except Exception:
-                    pass
+    # ── 🌤️ MÉTÉO ──────────────────────────────────────────────────────────────
+    with tab_meteo:
+        t_from = df_filtered["valid_local"].min().strftime("%d/%m")
+        t_to   = df_filtered["valid_local"].max().strftime("%d/%m %H:%M")
+        meteo_default = [v for v in ["mslp_hpa","t2m_c"] if v in df_filtered.columns]
+        _opt_labels = {
+            "sst_c":    "SST (°C)",
+            "rain_pct": "Précip. (%)" if lang=="FR" else "Rain (%)",
+            "vis_km":   "Visibilité (km)" if lang=="FR" else "Visibility (km)",
+        }
+        st.markdown("**Options :**" if lang=="FR" else "**Options:**")
+        _cols = st.columns(3)
+        meteo_extra = []
+        for i,(var,label) in enumerate(_opt_labels.items()):
+            if var in df_filtered.columns:
+                if _cols[i].checkbox(label, value=False, key=f"meteo_{var}"):
+                    meteo_extra.append(var)
+        meteo_vars = meteo_default + meteo_extra
+        if meteo_vars:
+            st.plotly_chart(make_timeseries(df_filtered, meteo_vars,
+                f"{T('forecast_title')} ({t_from} → {t_to})"), width='stretch')
 
-    # Vent & Rose
+    # ── 💨 VENT ───────────────────────────────────────────────────────────────
     with tab_vent:
-        # ── Vitesses de vent avec annotations direction cardinale ─────────
-        wv = [v for v in ["wind10_spd_kt","wind10_gust_kt","wind100_spd_kt"] if v in df_filtered.columns]
-
-        # Conversion degrés → cardinal pour annotations
         lang_a = st.session_state.get("lang","FR")
         def deg_to_card(deg):
-            if lang_a == "FR":
-                dirs = ["N","NNE","NE","ENE","E","ESE","SE","SSE",
-                        "S","SSO","SO","OSO","O","ONO","NO","NNO"]
-            else:
-                dirs = ["N","NNE","NE","ENE","E","ESE","SE","SSE",
-                        "S","SSW","SW","WSW","W","WNW","NW","NNW"]
+            dirs = (["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSO","SO","OSO","O","ONO","NO","NNO"]
+                    if lang_a=="FR" else
+                    ["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSW","SW","WSW","W","WNW","NW","NNW"])
             try: return dirs[round(float(deg)/22.5) % 16]
             except: return ""
 
+        wv = [v for v in ["wind10_spd_kt","wind10_gust_kt","wind100_spd_kt"] if v in df_filtered.columns]
         fig_wind = make_timeseries(df_filtered, wv, T("wind_speed_title"))
-
-        # Annotations vectorisées — 1 sur 2 pour réduire charge navigateur
         _x_str = df_filtered["valid_local"].dt.strftime("%Y-%m-%d %H:%M:%S").tolist()
         if "wind10_dir" in df_filtered.columns and "wind10_spd_kt" in df_filtered.columns:
             _c10 = [deg_to_card(d) for d in df_filtered["wind10_dir"].tolist()]
             _y10 = df_filtered["wind10_spd_kt"].tolist()
-            for idx, (_x, _y, _c) in enumerate(zip(_x_str, _y10, _c10)):
-                if idx % 2 == 0 and _c and pd.notna(_y):
+            for idx,(_x,_y,_c) in enumerate(zip(_x_str,_y10,_c10)):
+                if idx%2==0 and _c and pd.notna(_y):
                     fig_wind.add_annotation(x=_x, y=_y, text=f"<b>{_c}</b>",
-                        showarrow=False, font=dict(size=8, color="#a9e34b"),
-                        yshift=12, row=1, col=1)
-
-        # Annotations direction sur courbe wind100_spd_kt
+                        showarrow=False, font=dict(size=8,color="#a9e34b"), yshift=12, row=1, col=1)
         if "wind100_dir" in df_filtered.columns and "wind100_spd_kt" in df_filtered.columns:
-            wv_list = [v for v in ["wind10_spd_kt","wind10_gust_kt","wind100_spd_kt"] if v in df_filtered.columns]
-            row100 = wv_list.index("wind100_spd_kt") + 1 if "wind100_spd_kt" in wv_list else 3
+            _wv = [v for v in ["wind10_spd_kt","wind10_gust_kt","wind100_spd_kt"] if v in df_filtered.columns]
+            _r100 = _wv.index("wind100_spd_kt")+1 if "wind100_spd_kt" in _wv else 3
             _c100 = [deg_to_card(d) for d in df_filtered["wind100_dir"].tolist()]
             _y100 = df_filtered["wind100_spd_kt"].tolist()
-            for idx, (_x, _y, _c) in enumerate(zip(_x_str, _y100, _c100)):
-                if idx % 2 == 0 and _c and pd.notna(_y):
+            for idx,(_x,_y,_c) in enumerate(zip(_x_str,_y100,_c100)):
+                if idx%2==0 and _c and pd.notna(_y):
                     fig_wind.add_annotation(x=_x, y=_y, text=f"<b>{_c}</b>",
-                        showarrow=False, font=dict(size=8, color="#40c057"),
-                        yshift=12, row=row100, col=1)
-
+                        showarrow=False, font=dict(size=8,color="#40c057"), yshift=12, row=_r100, col=1)
         st.plotly_chart(fig_wind, width='stretch')
 
-        # ── Roses des vents 10m et 100m côte à côte ───────────────────────
         lang_vv = st.session_state.get("lang","FR")
-        title_10m  = T("wind_rose_title")
         title_100m = "Rose des Vents 100m" if lang_vv=="FR" else "Wind Rose 100m"
-        c_r1, c_r2 = st.columns(2)
+        c_r1,c_r2 = st.columns(2)
         with c_r1:
-            st.plotly_chart(
-                make_wind_rose(df_filtered, dir_col="wind10_dir", spd_col="wind10_spd_kt",
-                               title=title_10m),
-                width='stretch', key="wind_rose_10m"
-            )
+            st.plotly_chart(make_wind_rose(df_filtered, dir_col="wind10_dir",
+                spd_col="wind10_spd_kt", title=T("wind_rose_title")),
+                width='stretch', key="wind_rose_10m")
         with c_r2:
             if "wind100_dir" in df_filtered.columns and "wind100_spd_kt" in df_filtered.columns:
-                st.plotly_chart(
-                    make_wind_rose(df_filtered, dir_col="wind100_dir", spd_col="wind100_spd_kt",
-                                   title=title_100m),
-                    width='stretch', key="wind_rose_100m"
-                )
+                st.plotly_chart(make_wind_rose(df_filtered, dir_col="wind100_dir",
+                    spd_col="wind100_spd_kt", title=title_100m),
+                    width='stretch', key="wind_rose_100m")
 
-    # Swell & Courants
-    with tab_swell:
+    # ── 🌊 MER ────────────────────────────────────────────────────────────────
+    with tab_mer:
+        lang_m = st.session_state.get("lang","FR")
         c1,c2 = st.columns(2)
         with c1:
-            sv = [v for v in ["swh_m","sw1_ht_m","sw2_ht_m"] if v in df_filtered.columns]
-            st.plotly_chart(make_timeseries(df_filtered, sv, T("wave_height_title")), width='stretch')
+            if "swh_m" in df_filtered.columns:
+                st.plotly_chart(make_timeseries(df_filtered, ["swh_m"],
+                    T("wave_height_title")), width='stretch')
         with c2:
             st.plotly_chart(make_swell_compass(df_filtered), width='stretch')
-        c3,c4 = st.columns(2)
-        with c3:
-            pv = [v for v in ["sw1_period_s","sw2_period_s"] if v in df_filtered.columns]
-            if pv: st.plotly_chart(make_timeseries(df_filtered,pv,T("swell_per_title")), width='stretch')
-        with c4:
-            cv = [v for v in ["cur_spd_kt","cur_dir"] if v in df_filtered.columns]
-            if cv: st.plotly_chart(make_timeseries(df_filtered,cv,T("current_title")), width='stretch')
 
-    # Corrélations
-    with tab_corr:
-        num_vars = [k for k in VAR_META if k in df_filtered.columns
-                    and df_filtered[k].dtype in [float,int,np.float64,np.int64]]
-        if len(num_vars) >= 2:
-            st.plotly_chart(make_correlation_heatmap(df_filtered,num_vars), width='stretch')
-        st.markdown(f'<div class="section-title">{T("scatter_title")}</div>', unsafe_allow_html=True)
-        c1,c2 = st.columns(2)
-        with c1:
-            var_x = st.selectbox(T("axis_x"), num_vars,
-                index=num_vars.index("wind10_spd_kt") if "wind10_spd_kt" in num_vars else 0, key="sx")
-        with c2:
-            var_y = st.selectbox(T("axis_y"), num_vars,
-                index=num_vars.index("swh_m") if "swh_m" in num_vars else 0, key="sy")
-        if var_x and var_y:
-            mx = VAR_META.get(var_x,{}); my = VAR_META.get(var_y,{})
-            sx = mx.get(lang,{}).get("short",var_x); sy = my.get(lang,{}).get("short",var_y)
-            ux = mx.get("unit","");                  uy = my.get("unit","")
-            fig_sc = go.Figure(go.Scattergl(
-                x=df_filtered[var_x], y=df_filtered[var_y], mode="markers",
-                marker=dict(color=df_filtered["valid_local"].astype(np.int64)//10**9,
-                    colorscale="Viridis",size=7,opacity=0.8,
-                    colorbar=dict(title=T("time_label"),tickfont=dict(color="#e9ecef")),showscale=True),
-                hovertemplate=f"{sx}: %{{x:.2f}} {ux}<br>{sy}: %{{y:.2f}} {uy}<extra></extra>"))
-            th = plotly_theme()
-            fig_sc.update_layout(**th, height=380,
-                xaxis_title=f"{sx} ({ux})", yaxis_title=f"{sy} ({uy})",
-                title=dict(text=f"{sx} vs {sy}",font=dict(color="#15aabf",size=13)))
-            st.plotly_chart(fig_sc, width='stretch')
+        _opt_mer = {
+            "swell_ht":  "Hauteurs Swell 1 & 2" if lang_m=="FR" else "Swell 1 & 2 Heights",
+            "swell_per": "Périodes Swell" if lang_m=="FR" else "Swell Periods",
+            "currents":  "Courants marins" if lang_m=="FR" else "Marine Currents",
+        }
+        st.markdown("**Options :**" if lang_m=="FR" else "**Options:**")
+        _cols_m = st.columns(3)
+        show_sh  = _cols_m[0].checkbox(_opt_mer["swell_ht"],  value=False, key="mer_swell_ht")
+        show_sp  = _cols_m[1].checkbox(_opt_mer["swell_per"], value=False, key="mer_swell_per")
+        show_cur = _cols_m[2].checkbox(_opt_mer["currents"],  value=False, key="mer_currents")
+        if show_sh:
+            sv = [v for v in ["sw1_ht_m","sw2_ht_m"] if v in df_filtered.columns]
+            if sv: st.plotly_chart(make_timeseries(df_filtered, sv, T("wave_height_title")), width='stretch')
+        if show_sp:
+            pv = [v for v in ["sw1_period_s","sw2_period_s"] if v in df_filtered.columns]
+            if pv: st.plotly_chart(make_timeseries(df_filtered, pv, T("swell_per_title")), width='stretch')
+        if show_cur:
+            cv = [v for v in ["cur_spd_kt","cur_dir"] if v in df_filtered.columns]
+            if cv: st.plotly_chart(make_timeseries(df_filtered, cv, T("current_title")), width='stretch')
+
 
     # Données brutes
     with tab_data:
@@ -1104,6 +1071,7 @@ def render_main_tabs(df, df_filtered, params):
         nc = display_df.select_dtypes(include=[np.number]).columns
         styled = styled.format({c:"{:.2f}" for c in nc}, na_rep="—")
         st.dataframe(styled, width='stretch', height=450)
+
 
     # Exports
     with tab_export:
@@ -1161,6 +1129,7 @@ def render_main_tabs(df, df_filtered, params):
         st.text_area(T("bulletin_textarea"), value=bulletin, height=340)
         st.download_button(T("bulletin_dl"), data=bulletin.encode("utf-8"),
             file_name=f"bulletin_seme_{ts}.txt", mime="text/plain", width='stretch')
+
 
 
 # ─────────────────────────────────────────────────────────────────────────────

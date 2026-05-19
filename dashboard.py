@@ -437,8 +437,14 @@ def load_github_csv():
             if item["path"].startswith("bulletin_marine_seme_") and item["path"].endswith(".csv")
         ])
         if not csv_files:
-            return None, "Aucun CSV bulletin trouvé."
-        latest = csv_files[-1]
+            # Fallback ancien nom
+            has_latest = any(item["path"] == "latest_forecast.csv" for item in tree.get("tree", []))
+            if has_latest:
+                latest = "latest_forecast.csv"
+            else:
+                return None, "Aucun CSV trouvé sur GitHub."
+        else:
+            latest = csv_files[-1]
         with urllib.request.urlopen(GITHUB_RAW_URL + latest, timeout=15) as resp:
             content = resp.read().decode("utf-8")
         df = pd.read_csv(_io.StringIO(content))

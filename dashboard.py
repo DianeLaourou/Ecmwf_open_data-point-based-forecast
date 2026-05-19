@@ -645,6 +645,19 @@ def make_timeseries(df, selected_vars, title=""):
                 annotation_text=thresh_name(th), annotation_font=dict(color=th["color"],size=10),
                 annotation_bgcolor="rgba(10,22,40,0.6)", row=i, col=1)
         fig.update_yaxes(title_text=unit, row=i, col=1, title_font=dict(size=10,color=color))
+
+        # Configuration spéciale pour MSLP : axe Y fixe 1000-1020 hPa, pas de 2
+        if var == "mslp_hpa" and not df[var].dropna().empty:
+            data_min = df[var].dropna().min()
+            data_max = df[var].dropna().max()
+            y_min = min(1000, int(data_min) - 2)
+            y_max = max(1020, int(data_max) + 2)
+            fig.update_yaxes(
+                range=[y_min, y_max],
+                dtick=2,
+                tick0=y_min,
+                row=i, col=1
+            )
     th = plotly_theme()
     for i in range(1, n+1):
         ax = f"xaxis{'' if i==1 else i}"
@@ -850,14 +863,6 @@ def render_sidebar():
             ECMWF · Copernicus<br>{T('footer_copy')}
         </div>""", unsafe_allow_html=True)
 
-    # Stocker le type de graphique dans session_state pour make_timeseries
-    if chart_type in ["Barres","Bars"]:
-        st.session_state["chart_type_val"] = "bars"
-    elif chart_type in ["Aire empilée","Stacked area"]:
-        st.session_state["chart_type_val"] = "area"
-    else:
-        st.session_state["chart_type_val"] = "lines"
-
     return {"data_source":data_source,"run_date":str(run_date) if run_date else None,
             "run_hour":run_hour,"swh_source":swh_source,"selected_vars":selected_vars,
             "time_start":time_start,"time_end":time_end,
@@ -926,35 +931,24 @@ def render_main_tabs(df, df_filtered, params):
 
     # Vent & Rose
     with tab_vent:
-        # ── Vitesses de vent ──────────────────────────────────────────────
-        wv = [v for v in ["wind10_spd_kt","wind10_gust_kt","wind100_spd_kt"] if v in df_filtered.columns]
-        st.plotly_chart(make_timeseries(df_filtered, wv, T("wind_speed_title")),
-                        use_container_width=True)
-
-        # ── Direction du vent 10m ─────────────────────────────────────────
-        if "wind10_dir" in df_filtered.columns:
-            st.markdown(f'<div class="section-title">{T("wind_dir_title")}</div>',
-                        unsafe_allow_html=True)
-            st.plotly_chart(make_timeseries(df_filtered, ["wind10_dir"], T("wind_dir_title")),
-                            use_container_width=True)
-
-        # ── Roses des vents 10m et 100m côte à côte ───────────────────────
-        lang_v = st.session_state.get("lang","FR")
-        title_100 = "Rose des Vents 100m" if lang_v=="FR" else "Wind Rose 100m"
-        c1, c2 = st.columns(2)
+        c1,c2 = st.columns(2)
         with c1:
-            st.plotly_chart(
-                make_wind_rose(df_filtered, dir_col="wind10_dir", spd_col="wind10_spd_kt",
-                               title=T("wind_rose_title")),
-                use_container_width=True, key="wind_rose_10m"
-            )
+            wv = [v for v in ["wind10_spd_kt","wind10_gust_kt","wind100_spd_kt"] if v in df_filtered.columns]
+            st.plotly_chart(make_timeseries(df_filtered, wv, T("wind_speed_title")), use_container_width=True)
         with c2:
-            if "wind100_dir" in df_filtered.columns and "wind100_spd_kt" in df_filtered.columns:
-                st.plotly_chart(
-                    make_wind_rose(df_filtered, dir_col="wind100_dir", spd_col="wind100_spd_kt",
-                                   title=title_100),
-                    use_container_width=True, key="wind_rose_100m"
-                )
+            st.plotly_chart(make_wind_rose(df_filtered), use_container_width=True, key="wind_rose_10m_top")
+        if "wind10_dir" in df_filtered.columns:
+            st.markdown(f'<div class="section-title">{T("wind_dir_title")}</div>', unsafe_allow_html=True)
+            st.plotly_chart(make_timeseries(df_filtered,["wind10_dir"],T("wind_dir_title")), use_container_width=True)
+
+        # Rose des vents 100m
+        if "wind100_dir" in df_filtered.columns and "wind100_spd_kt" in df_filtered.columns:
+            st.markdown('<div class="section-title">🌬️ Rose des Vents 100m / Wind Rose 100m</div>', unsafe_allow_html=True)
+            c_r1, c_r2 = st.columns(2)
+            with c_r1:
+                st.plotly_chart(make_wind_rose(df_filtered, dir_col="wind10_dir",  spd_col="wind10_spd_kt",  title=T("wind_rose_title")), use_container_width=True, key="wind_rose_10m")
+            with c_r2:
+                st.plotly_chart(make_wind_rose(df_filtered, dir_col="wind100_dir", spd_col="wind100_spd_kt", title="Rose des Vents 100m / Wind Rose 100m"), use_container_width=True, key="wind_rose_100m")
 
     # Swell & Courants
     with tab_swell:

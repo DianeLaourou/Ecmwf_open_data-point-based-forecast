@@ -781,11 +781,11 @@ def make_correlation_heatmap(df, num_vars):
 def render_sidebar():
     with st.sidebar:
         # Logo
-        st.markdown("""
+        st.markdown(f"""
         <div style='text-align:center;padding:0.8rem 0 1rem 0;'>
             <div style='background:rgba(13,34,64,0.8);border:2px solid rgba(21,170,191,0.4);
                         border-radius:12px;padding:0.8rem;display:inline-block;'>
-                <img src="" + _LOGO_URI + " style='width:90px;height:90px;object-fit:contain;display:block;'/>
+                <img src="{_LOGO_URI}" style='width:90px;height:90px;object-fit:contain;display:block;'/>
             </div>
             <div style='color:#15aabf;font-size:0.7rem;letter-spacing:2px;text-transform:uppercase;font-weight:700;margin-top:0.6rem;'>METEO-BENIN</div>
             <div style='color:#adb5bd;font-size:0.65rem;margin-top:0.2rem;'>DPROM / SPAM</div>

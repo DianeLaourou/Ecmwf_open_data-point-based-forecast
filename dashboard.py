@@ -792,16 +792,8 @@ def render_sidebar():
         st.divider()
         st.markdown(f"## {T('settings')}")
 
-        # Source de données
-        data_source = st.radio(T("data_source_label"),
-            [T("data_demo"), T("data_live")], index=0)
-
         run_date, run_hour, swh_source = None, 0, "ecmwf"
-        if data_source == T("data_live"):
-            st.markdown(T("ecmwf_run_title"))
-            run_date   = st.date_input(T("date_label"), value=datetime.utcnow().date())
-            run_hour   = st.selectbox(T("hour_utc"), [0,6,12,18], index=2)
-            swh_source = st.selectbox(T("swh_source"), ["ecmwf","copernicus"], index=0)
+        data_source = "github"   # toujours GitHub CSV
 
         st.divider()
 
@@ -821,14 +813,11 @@ def render_sidebar():
 
         st.divider()
 
-        # Période — basée sur les vraies données GitHub si disponibles
+        # Période — bornes depuis session_state (df chargé dans main())
         st.markdown(T("period_title"))
 
-        # Charger les vraies données pour les bornes (sans spinner)
-        _df_real, _ = load_github_csv()
-        _df_b = _df_real if _df_real is not None and not _df_real.empty else generate_demo_data()
-
-        # Bornes réelles : début = première occurrence 19h, fin = dernière valeur
+        _df_b = st.session_state.get("df_loaded", generate_demo_data())
+        _df_b = _df_b.copy()
         _df_b["valid_local"] = pd.to_datetime(_df_b["valid_local"])
         _dt_min = _df_b["valid_local"].min().to_pydatetime()
         _dt_max = _df_b["valid_local"].max().to_pydatetime()

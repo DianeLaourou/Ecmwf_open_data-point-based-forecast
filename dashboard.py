@@ -923,7 +923,7 @@ def render_main_tabs(df, df_filtered, params):
             wv = [v for v in ["wind10_spd_kt","wind10_gust_kt","wind100_spd_kt"] if v in df_filtered.columns]
             st.plotly_chart(make_timeseries(df_filtered, wv, T("wind_speed_title")), use_container_width=True)
         with c2:
-            st.plotly_chart(make_wind_rose(df_filtered), use_container_width=True)
+            st.plotly_chart(make_wind_rose(df_filtered), use_container_width=True, key="wind_rose_10m_top")
         if "wind10_dir" in df_filtered.columns:
             st.markdown(f'<div class="section-title">{T("wind_dir_title")}</div>', unsafe_allow_html=True)
             st.plotly_chart(make_timeseries(df_filtered,["wind10_dir"],T("wind_dir_title")), use_container_width=True)
@@ -933,9 +933,9 @@ def render_main_tabs(df, df_filtered, params):
             st.markdown('<div class="section-title">🌬️ Rose des Vents 100m / Wind Rose 100m</div>', unsafe_allow_html=True)
             c_r1, c_r2 = st.columns(2)
             with c_r1:
-                st.plotly_chart(make_wind_rose(df_filtered, dir_col="wind10_dir",  spd_col="wind10_spd_kt",  title=T("wind_rose_title")), use_container_width=True)
+                st.plotly_chart(make_wind_rose(df_filtered, dir_col="wind10_dir",  spd_col="wind10_spd_kt",  title=T("wind_rose_title")), use_container_width=True, key="wind_rose_10m")
             with c_r2:
-                st.plotly_chart(make_wind_rose(df_filtered, dir_col="wind100_dir", spd_col="wind100_spd_kt", title="Rose des Vents 100m / Wind Rose 100m"), use_container_width=True)
+                st.plotly_chart(make_wind_rose(df_filtered, dir_col="wind100_dir", spd_col="wind100_spd_kt", title="Rose des Vents 100m / Wind Rose 100m"), use_container_width=True, key="wind_rose_100m")
 
     # Swell & Courants
     with tab_swell:

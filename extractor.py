@@ -122,7 +122,7 @@ def extract_ecmwf(run_datetime: datetime) -> pd.DataFrame:
 
     tmp_dir = Path("tmp_ecmwf")
     tmp_dir.mkdir(exist_ok=True)
-    steps   = list(range(0, 85, 3))   # 0 à 84h, pas de 3h
+    steps   = list(range(0, 121, 3))  # 0 à 120h, pas de 3h — garantit J+3 19h
 
     # ── Fonction de téléchargement avec retry sur les miroirs ─────────────
     MIRRORS = ["azure", "google", "aws"]
@@ -155,31 +155,37 @@ def extract_ecmwf(run_datetime: datetime) -> pd.DataFrame:
 
     print("  📡 Téléchargement ECMWF Open Data...")
 
-    # ── Téléchargement PARALLÈLE : atm + wav simultanément ────────────────
-    import concurrent.futures
-
-    atm_params = {
-        "date": run_datetime.strftime("%Y-%m-%d"), "time": run_datetime.hour,
-        "step": steps, "stream": "oper", "type": "fc",
-        "param": ["10u","10v","10fg","100u","100v","msl","2t","2d","tcc","tp"],
-    }
-    wav_params = {
-        "date": run_datetime.strftime("%Y-%m-%d"), "time": run_datetime.hour,
-        "step": steps, "stream": "wave", "type": "fc",
-        "param": ["swh"],
-    }
-
+    # ── Fichier atmosphérique ──────────────────────────────────────────────
     atm_file = tmp_dir / "ecmwf_atm.grib2"
-    wav_file = tmp_dir / "ecmwf_wav.grib2"
-
-    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
-        f_atm = executor.submit(download, atm_params, atm_file, "Paramètres atmosphériques")
-        f_wav = executor.submit(download, wav_params, wav_file, "SWH")
-        ok_atm = f_atm.result()
-        ok_wav = f_wav.result()
-
+    ok_atm = download(
+        params={
+            "date": run_datetime.strftime("%Y-%m-%d"),
+            "time": run_datetime.hour,
+            "step": steps, "stream": "oper", "type": "fc",
+            "param": ["10u", "10v", "10fg", "100u", "100v", "msl", "2t",
+                      "2d",   # point de rosée → visibilité
+                      "tcc",  # couverture nuageuse totale → visibilité
+                      "tp",   # précipitation totale → chance de pluie
+                      ],
+        },
+        target=atm_file,
+        label="Paramètres atmosphériques"
+    )
     if not ok_atm:
         raise RuntimeError("Impossible de télécharger les paramètres atmosphériques ECMWF.")
+
+    # ── SWH (stream wave) ─────────────────────────────────────────────────
+    wav_file = tmp_dir / "ecmwf_wav.grib2"
+    ok_wav = download(
+        params={
+            "date": run_datetime.strftime("%Y-%m-%d"),
+            "time": run_datetime.hour,
+            "step": steps, "stream": "wave", "type": "fc",
+            "param": ["swh"],
+        },
+        target=wav_file,
+        label="SWH"
+    )
 
     # ── Ouverture des datasets cfgrib ──────────────────────────────────────
     import cfgrib

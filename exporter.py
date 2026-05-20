@@ -139,7 +139,7 @@ def export_excel(df: pd.DataFrame,
         "Dir.", "Per.\n(s)", "Ht.\n(m)",           # K L M — Swell 1
         "Dir.", "Per.\n(s)", "Ht.\n(m)",           # N O P — Swell 2
         "S.W\n(m)",                                # Q     — SWH
-        "Dir.", "Spd.\n(kts)",                     # R S   — Currents
+        "Dir.", "Spd.\n(m/s)",                     # R S   — Currents
         "⚠️", "Src",                               # T U
     ]
     widths = [10, 7,  5, 6, 6,  5, 6,  7, 6, 6,  5, 5, 6,  5, 5, 6,  6,  5, 6,  5, 8]
@@ -214,7 +214,7 @@ def export_excel(df: pd.DataFrame,
             # SWH + courants + alerte + source
             fmt(swh, 1),
             str(row.get("cur_dir") or "—"),
-            fmt(row.get("cur_spd_kt"), 1),
+            fmt(row.get("cur_spd_ms"), 2),
             alerte,
             str(row.get("swh_source") or "—"),
         ]

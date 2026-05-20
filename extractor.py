@@ -399,6 +399,132 @@ def _read_grib_eccodes(atm_file, wav_file, run_datetime):
     return rows
 
 
+
+# ---------------------------------------------------------------------------
+# Extraction depuis GRIB2 locaux (téléchargés par Google Colab via Drive)
+# ---------------------------------------------------------------------------
+
+def _extract_from_local_grib(run_datetime: datetime, tmp_dir) -> pd.DataFrame:
+    """
+    Extrait les données ECMWF depuis des fichiers GRIB2 déjà présents localement
+    (téléchargés par Google Colab et synchronisés via Google Drive).
+    Utilise exactement la même logique que extract_ecmwf.
+    """
+    from pathlib import Path
+    import cfgrib
+
+    tmp_dir  = Path(tmp_dir)
+    atm_file = tmp_dir / "ecmwf_atm.grib2"
+    wav_file = tmp_dir / "ecmwf_wav.grib2"
+
+    if not atm_file.exists() or not wav_file.exists():
+        raise FileNotFoundError(f"Fichiers GRIB2 manquants dans {tmp_dir}")
+
+    steps = list(range(0, 121, 3))  # 0 à 120h
+
+    # ── Ouverture datasets cfgrib (même logique que extract_ecmwf) ─────────
+    def open_ds(filepath):
+        result = {}
+        try:
+            datasets = cfgrib.open_datasets(
+                str(filepath),
+                backend_kwargs={"indexpath": ""}
+            )
+            for ds in datasets:
+                for var in ds.data_vars:
+                    result[var] = ds
+        except Exception as e:
+            print(f"  ⚠️  Erreur ouverture {filepath.name} : {e}")
+        return result
+
+    print(f"  Lecture GRIB2 avec cfgrib...")
+    ds_atm = open_ds(atm_file)
+    ds_wav = open_ds(wav_file)
+    ds_sst = {}
+
+    if not ds_atm:
+        print(f"  ⚠️  cfgrib échoué — tentative eccodes")
+        rows = _read_grib_eccodes(atm_file, wav_file, run_datetime)
+        df = pd.DataFrame(rows)
+        print(f"  → {len(df)} pas de temps extraits (eccodes fallback).")
+        return df
+
+    print(f"  ✅ GRIB2 ouvert — variables ATM: {list(ds_atm.keys())}")
+
+    def get_val(ds_dict, var, step_idx):
+        ds = ds_dict.get(var)
+        if ds is None:
+            return None
+        try:
+            da = ds[var]
+            if "step" in da.dims:
+                da = da.isel(step=step_idx)
+            elif "valid_time" in da.dims:
+                da = da.isel(valid_time=step_idx)
+            da = da.sel(latitude=config.POINT["lat"],
+                        longitude=config.POINT["lon"],
+                        method="nearest")
+            val = float(da.values)
+            return None if (val != val) else val
+        except Exception:
+            return None
+
+    rows    = []
+    tp_prev = None
+    for i, step_h in enumerate(steps):
+        valid_utc   = run_datetime + timedelta(hours=step_h)
+        valid_local = valid_utc + timedelta(hours=config.UTC_OFFSET)
+
+        u10  = get_val(ds_atm, "u10",  i)
+        v10  = get_val(ds_atm, "v10",  i)
+        fg10 = get_val(ds_atm, "fg10", i)
+        u100 = get_val(ds_atm, "u100", i)
+        v100 = get_val(ds_atm, "v100", i)
+        msl  = get_val(ds_atm, "msl",  i)
+        t2m  = get_val(ds_atm, "t2m",  i)
+        d2m  = get_val(ds_atm, "d2m",  i)
+        tcc  = get_val(ds_atm, "tcc",  i)
+        tp   = get_val(ds_atm, "tp",   i)
+        swh  = get_val(ds_wav, "swh",  i)
+
+        wind10_dir,  wind10_spd  = uv_to_dir_speed(u10,  v10)
+        wind100_dir, wind100_spd = uv_to_dir_speed(u100, v100)
+        vis      = calc_visibility(t2m, d2m, tcc)
+        rain_pct = calc_rain_chance(tp, tp_prev)
+        tp_prev  = tp
+
+        rows.append({
+            "valid_utc"      : valid_utc,
+            "valid_local"    : valid_local,
+            "step_h"         : step_h,
+            "wind10_dir_deg" : wind10_dir,
+            "wind10_dir"     : degrees_to_cardinal(wind10_dir),
+            "wind10_spd_kt"  : ms_to_knots(wind10_spd),
+            "wind10_gust_kt" : ms_to_knots(fg10),
+            "wind100_dir_deg": wind100_dir,
+            "wind100_dir"    : degrees_to_cardinal(wind100_dir),
+            "wind100_spd_kt" : ms_to_knots(wind100_spd),
+            "mslp_hpa"       : pa_to_hpa(msl),
+            "vis_km"         : vis,
+            "t2m_c"          : kelvin_to_celsius(t2m),
+            "rain_pct"       : rain_pct,
+            "sst_c"          : None,
+            "swh_ecmwf_m"    : round(swh, 2) if swh else None,
+        })
+
+    # Fermeture
+    seen = []
+    for ds_dict in [ds_atm, ds_wav, ds_sst]:
+        for ds in ds_dict.values():
+            if ds not in seen:
+                seen.append(ds)
+                try: ds.close()
+                except: pass
+
+    df = pd.DataFrame(rows)
+    print(f"  → {len(df)} pas de temps extraits (GRIB2 local cfgrib).")
+    return df
+
 # ---------------------------------------------------------------------------
 # Copernicus Marine — Swell1 + Swell2 + courants
 # ---------------------------------------------------------------------------
@@ -411,8 +537,10 @@ def extract_copernicus(run_datetime: datetime) -> pd.DataFrame:
 
     Le dernier run disponible est automatiquement sélectionné par Copernicus.
     """
+    # Étendre à 96h minimum pour garantir J+3 19h quelle que soit la run
+    cop_hours  = max(config.FORECAST_HOURS, 120)
     date_start = run_datetime.strftime("%Y-%m-%dT%H:%M:%S")
-    date_end   = (run_datetime + timedelta(hours=config.FORECAST_HOURS)).strftime("%Y-%m-%dT%H:%M:%S")
+    date_end   = (run_datetime + timedelta(hours=cop_hours)).strftime("%Y-%m-%dT%H:%M:%S")
 
     lat   = config.POINT["lat"]
     lon   = config.POINT["lon"]
@@ -554,6 +682,39 @@ def merge_sources(df_ecmwf: pd.DataFrame,
 
     # SST depuis Copernicus (priorité sur ECMWF qui n'a pas de SST)
     df["sst_c"] = df["sst_c_c"] if "sst_c_c" in df.columns else df.get("sst_c_e")
+
+    # Récupérer colonnes suffixées après merge outer
+    for col in ["vis_km","rain_pct","wind10_dir","wind10_spd_kt","wind10_gust_kt",
+                "wind100_dir","wind100_spd_kt","mslp_hpa","t2m_c","swh_ecmwf_m","step_h"]:
+        if col not in df.columns:
+            if f"{col}_e" in df.columns: df[col] = df[f"{col}_e"]
+            elif f"{col}_c" in df.columns: df[col] = df[f"{col}_c"]
+    for col in ["sw1_dir","sw1_dir_deg","sw1_period_s","sw1_ht_m",
+                "sw2_dir","sw2_dir_deg","sw2_period_s","sw2_ht_m",
+                "cur_dir","cur_dir_deg","cur_spd_kt","swh_cop_m"]:
+        if col not in df.columns:
+            if f"{col}_c" in df.columns: df[col] = df[f"{col}_c"]
+            elif f"{col}_e" in df.columns: df[col] = df[f"{col}_e"]
+
+    # vis_km et rain_pct — colonnes ECMWF suffixées _e après merge
+    for col in ["vis_km", "rain_pct", "wind10_dir", "wind10_spd_kt", "wind10_gust_kt",
+                "wind100_dir", "wind100_spd_kt", "mslp_hpa", "t2m_c",
+                "swh_ecmwf_m", "step_h"]:
+        if col not in df.columns:
+            if f"{col}_e" in df.columns:
+                df[col] = df[f"{col}_e"]
+            elif f"{col}_c" in df.columns:
+                df[col] = df[f"{col}_c"]
+
+    # sw1, sw2, cur — colonnes Copernicus suffixées _c après merge
+    for col in ["sw1_dir","sw1_dir_deg","sw1_period_s","sw1_ht_m",
+                "sw2_dir","sw2_dir_deg","sw2_period_s","sw2_ht_m",
+                "cur_dir","cur_dir_deg","cur_spd_kt","swh_cop_m"]:
+        if col not in df.columns:
+            if f"{col}_c" in df.columns:
+                df[col] = df[f"{col}_c"]
+            elif f"{col}_e" in df.columns:
+                df[col] = df[f"{col}_e"]
 
     # SWH final selon l'option choisie
     if config.SWH_SOURCE == "ecmwf":

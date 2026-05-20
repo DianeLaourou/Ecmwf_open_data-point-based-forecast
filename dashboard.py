@@ -302,9 +302,9 @@ VAR_META = {
                       "EN": {"label": "Precipitation probability",   "short":"Rain (%)",   "group":"grp_other"},
                       "unit":"%","color":"#4dabf7","icon":"🌧️",
                       "thresholds":[{"value":50,"color":"rgba(21,170,191,0.2)","dash":"dot","name_FR":"50%","name_EN":"50%"}]},
-    "cur_spd_kt":    {"FR": {"label": "Vitesse courant marin","short":"Courant", "group":"grp_other"},
+    "cur_spd_ms":    {"FR": {"label": "Vitesse courant marin (m/s)","short":"Courant", "group":"grp_other"},
                       "EN": {"label": "Current speed",          "short":"Current", "group":"grp_other"},
-                      "unit":"kt","color":"#cc5de8","icon":"🔄","thresholds":[]},
+                      "unit":"m/s","color":"#cc5de8","icon":"🔄","thresholds":[]},
     "cur_dir":       {"FR": {"label": "Direction courant marin","short":"Dir Courant","group":"grp_other"},
                       "EN": {"label": "Current direction",      "short":"Cur Dir",   "group":"grp_other"},
                       "unit":"°","color":"#da77f2","icon":"🧭","thresholds":[]},
@@ -398,7 +398,7 @@ def generate_demo_data() -> pd.DataFrame:
         "sst_c":          28 + 1.5*np.sin(t*0.25) + np.random.normal(0,0.15,n),
         "vis_km":         np.clip(15 - 3*np.sin(t*0.9) + np.random.normal(0,0.5,n), 3, 20),
         "rain_pct":       np.clip(20 + 30*np.sin(t*0.8)**2 + np.random.normal(0,3,n), 0, 100),
-        "cur_spd_kt":     np.clip(0.5 + 0.4*np.sin(t*1.3) + np.random.normal(0,0.05,n), 0, 2),
+        "cur_spd_ms":     np.clip(0.5 + 0.4*np.sin(t*1.3) + np.random.normal(0,0.05,n), 0, 2),
         "cur_dir":        150 + 30*np.sin(t*0.7) + np.random.normal(0,5,n),
     })
     df["valid_local"] = pd.to_datetime(df["valid_local"])
@@ -1062,7 +1062,7 @@ def render_main_tabs(df, df_filtered, params):
             pv = [v for v in ["sw1_period_s","sw2_period_s"] if v in df_filtered.columns]
             if pv: st.plotly_chart(make_timeseries(df_filtered, pv, T("swell_per_title")), width='stretch')
         if show_cur:
-            cv = [v for v in ["cur_spd_kt","cur_dir"] if v in df_filtered.columns]
+            cv = [v for v in ["cur_spd_ms","cur_dir"] if v in df_filtered.columns]
             if cv: st.plotly_chart(make_timeseries(df_filtered, cv, T("current_title")), width='stretch')
 
 

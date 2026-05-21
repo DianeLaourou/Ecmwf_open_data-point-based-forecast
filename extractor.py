@@ -644,7 +644,7 @@ def extract_copernicus(run_datetime: datetime) -> pd.DataFrame:
             # Courant
             "cur_dir_deg" : cur_dir_deg,
             "cur_dir"     : degrees_to_cardinal(cur_dir_deg),
-            "cur_spd_kt"  : ms_to_knots(cur_spd_ms),
+            "cur_spd_ms"  : round(cur_spd_ms, 2) if cur_spd_ms is not None else None,
             # SWH total Copernicus (option B)
             "swh_cop_m"   : round(swh_cop, 1) if swh_cop else None,
         })
@@ -666,8 +666,7 @@ def merge_sources(df_ecmwf: pd.DataFrame,
                   df_cop: pd.DataFrame) -> pd.DataFrame:
     """
     Fusionne ECMWF et Copernicus sur l'heure locale arrondie.
-    La SST vient de Copernicus.
-    Choisit le SWH selon config.SWH_SOURCE.
+    Utilise left join sur ECMWF (41 lignes de référence).
     """
     df_ecmwf = df_ecmwf.copy()
     df_cop   = df_cop.copy()
@@ -676,45 +675,29 @@ def merge_sources(df_ecmwf: pd.DataFrame,
     df_ecmwf["key"] = pd.to_datetime(df_ecmwf["valid_local"]).dt.floor("h")
     df_cop["key"]   = pd.to_datetime(df_cop["valid_local"]).dt.floor("h")
 
-    df = pd.merge(df_ecmwf, df_cop, on="key", how="outer", suffixes=("_e", "_c"))
+    # LEFT join sur ECMWF → garde les 41 lignes ECMWF, ajoute Copernicus si disponible
+    df = pd.merge(df_ecmwf, df_cop, on="key", how="left", suffixes=("_e", "_c"))
 
     df["valid_local"] = df["key"]
 
-    # SST depuis Copernicus (priorité sur ECMWF qui n'a pas de SST)
-    df["sst_c"] = df["sst_c_c"] if "sst_c_c" in df.columns else df.get("sst_c_e")
+    # SST depuis Copernicus
+    df["sst_c"] = df["sst_c_c"] if "sst_c_c" in df.columns else None
 
-    # Récupérer colonnes suffixées après merge outer
+    # Colonnes ECMWF suffixées _e → récupérer
     for col in ["vis_km","rain_pct","wind10_dir","wind10_spd_kt","wind10_gust_kt",
                 "wind100_dir","wind100_spd_kt","mslp_hpa","t2m_c","swh_ecmwf_m","step_h"]:
         if col not in df.columns:
             if f"{col}_e" in df.columns: df[col] = df[f"{col}_e"]
-            elif f"{col}_c" in df.columns: df[col] = df[f"{col}_c"]
+        elif f"{col}_e" in df.columns:
+            # Toujours prendre la valeur _e (ECMWF) pour ces colonnes
+            df[col] = df[f"{col}_e"].fillna(df[col])
+
+    # Colonnes Copernicus suffixées _c → récupérer
     for col in ["sw1_dir","sw1_dir_deg","sw1_period_s","sw1_ht_m",
                 "sw2_dir","sw2_dir_deg","sw2_period_s","sw2_ht_m",
-                "cur_dir","cur_dir_deg","cur_spd_kt","swh_cop_m"]:
+                "cur_dir","cur_dir_deg","cur_spd_ms","swh_cop_m"]:
         if col not in df.columns:
             if f"{col}_c" in df.columns: df[col] = df[f"{col}_c"]
-            elif f"{col}_e" in df.columns: df[col] = df[f"{col}_e"]
-
-    # vis_km et rain_pct — colonnes ECMWF suffixées _e après merge
-    for col in ["vis_km", "rain_pct", "wind10_dir", "wind10_spd_kt", "wind10_gust_kt",
-                "wind100_dir", "wind100_spd_kt", "mslp_hpa", "t2m_c",
-                "swh_ecmwf_m", "step_h"]:
-        if col not in df.columns:
-            if f"{col}_e" in df.columns:
-                df[col] = df[f"{col}_e"]
-            elif f"{col}_c" in df.columns:
-                df[col] = df[f"{col}_c"]
-
-    # sw1, sw2, cur — colonnes Copernicus suffixées _c après merge
-    for col in ["sw1_dir","sw1_dir_deg","sw1_period_s","sw1_ht_m",
-                "sw2_dir","sw2_dir_deg","sw2_period_s","sw2_ht_m",
-                "cur_dir","cur_dir_deg","cur_spd_kt","swh_cop_m"]:
-        if col not in df.columns:
-            if f"{col}_c" in df.columns:
-                df[col] = df[f"{col}_c"]
-            elif f"{col}_e" in df.columns:
-                df[col] = df[f"{col}_e"]
 
     # SWH final selon l'option choisie
     if config.SWH_SOURCE == "ecmwf":
@@ -731,7 +714,7 @@ def merge_sources(df_ecmwf: pd.DataFrame,
         "wind10_dir", "wind10_spd_kt", "wind10_gust_kt",
         # Wind 100m
         "wind100_dir", "wind100_spd_kt",
-        # Weather params — ordre bulletin exact
+        # Weather params
         "mslp_hpa", "vis_km", "t2m_c", "rain_pct", "sst_c",
         # Swell 1
         "sw1_dir", "sw1_period_s", "sw1_ht_m",
@@ -740,7 +723,7 @@ def merge_sources(df_ecmwf: pd.DataFrame,
         # SWH
         "swh_m", "swh_source",
         # Currents
-        "cur_dir", "cur_spd_kt",
+        "cur_dir", "cur_spd_ms",
     ]
     existing = [c for c in cols if c in df.columns]
     df_final = df[existing].sort_values("valid_local").reset_index(drop=True)

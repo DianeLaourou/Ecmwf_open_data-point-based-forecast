@@ -372,20 +372,28 @@ def make_full_table(doc, df_sorted):
         sbg(c,"2E75B6"); sbo(c)
         cp(c,"",sz=9,color=WHITE)
 
+def _safe(lst):
+    """Remplace None/NaN par 0 pour matplotlib."""
+    return [v if (v is not None and not (isinstance(v, float) and math.isnan(v))) else 0 for v in lst]
+
 def gen_chart(df_sorted):
     import matplotlib; matplotlib.use("Agg"); import matplotlib.pyplot as plt
-    times=pd.to_datetime(df_sorted["valid_local"]); speed=df_sorted["wind10_spd_kt"].tolist(); gust=df_sorted["wind10_gust_kt"].tolist(); mslp=df_sorted["mslp_hpa"].tolist(); x=range(len(times))
+    times = pd.to_datetime(df_sorted["valid_local"])
+    speed = _safe(df_sorted["wind10_spd_kt"].tolist())
+    gust  = _safe(df_sorted["wind10_gust_kt"].tolist())
+    mslp  = _safe(df_sorted["mslp_hpa"].tolist())
+    x = range(len(times))
     lbl=[t.strftime("%H:%M") for t in times]; td={}; prev=None
     for i,t in enumerate(times):
         if t.date()!=prev: td[i]=f"{ENG_DS[t.weekday()]}\n{t.day}\n{ENG_MS[t.month]}\n{t.strftime('%H:%M')}"; prev=t.date()
     fig,ax1=plt.subplots(figsize=(13,6.5)); fig.patch.set_facecolor("white")
     ax2=ax1.twinx(); ax2.bar(x,mslp,color="#FFC000",alpha=0.8,label="MSLP",zorder=2); ax2.set_ylabel("Pressure (hPa)",fontsize=9); ax2.tick_params(axis="y",labelsize=8)
-    mc=[v for v in mslp if v and not math.isnan(v)]
+    mc=[v for v in mslp if v]; 
     if mc: ax2.set_ylim(min(mc)-3,max(mc)+3)
     ax1.set_zorder(ax2.get_zorder()+1); ax1.patch.set_visible(False)
     ax1.plot(x,speed,color="#4472C4",linewidth=2.5,label="Speed",zorder=5); ax1.plot(x,gust,color="#ED7D31",linewidth=2.5,label="Gust",zorder=5)
     ax1.set_ylabel("Wind (Kts)",fontsize=9); ax1.set_xlabel("Times",fontsize=9); ax1.tick_params(axis="y",labelsize=8); ax1.set_xlim(-0.5,len(x)-0.5)
-    gc=[v for v in gust if v and not math.isnan(v)]; ax1.set_ylim(0,(max(gc) if gc else 20)+4); ax1.grid(True,linestyle="--",alpha=0.4,zorder=1)
+    gc=[v for v in gust if v]; ax1.set_ylim(0,(max(gc) if gc else 20)+4); ax1.grid(True,linestyle="--",alpha=0.4,zorder=1)
     ax1.set_xticks(list(x)); ax1.set_xticklabels([td.get(i,lbl[i]) for i in list(x)],fontsize=6.5,ha="center")
     l1,lb1=ax1.get_legend_handles_labels(); l2,lb2=ax2.get_legend_handles_labels()
     ax1.legend(l2+l1,lb2+lb1,loc="lower center",ncol=3,fontsize=8,bbox_to_anchor=(0.5,-0.28),frameon=True)

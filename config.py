@@ -19,7 +19,7 @@ UTC_OFFSET = 1
 
 # --- Durée de prévision (heures) ---
 # 84h pour couvrir J 19h → J+3 19h depuis n'importe quelle run (00Z, 06Z, 12Z, 18Z)
-FORECAST_HOURS = 84
+FORECAST_HOURS = 120  # 120h garantit J+3 19h depuis n'importe quelle run
 
 # --- Seuils d'alerte ---
 ALERT_SWH_WARNING = 1.6   # m → cellule jaune (entre 1.6 et 2.0m)
@@ -53,11 +53,4 @@ COPERNICUS_PHY_VARIABLES = [
 # Inscription gratuite sur https://www.worldtides.info
 # Remplacez "VOTRE_CLE_ICI" par votre clé API après inscription
 WORLDTIDES_API_KEY = "b6f34de2-9b6f-4c52-ae06-98f6c4a78037"
-
-# --- Google Drive partagé (Pipeline_Sèmè) ---
-GDRIVE_FOLDER_ID = "1NVcsnOHYEwT8bc1OPzAjSsBSnWn9SH2c"
-
-# --- Chemin de sortie local ---
-import os
-OUTPUT_DIR  = os.environ.get("OUTPUT_DIR", "D:/pipeline")
-OUTPUT_FILE = os.path.join(OUTPUT_DIR, "bulletin_marine_seme.xlsx").replace("\\","/")
+OUTPUT_FILE = "D:/pipeline/bulletin_marine_seme.xlsx"

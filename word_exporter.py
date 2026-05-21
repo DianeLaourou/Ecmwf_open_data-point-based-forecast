@@ -204,7 +204,7 @@ def make_full_table(doc, df_sorted):
         ("Dir.",0.6),("Per.\n(s)",0.6),("Ht.\n(m)",0.6),
         ("Dir.",0.6),("Per.\n(s)",0.6),("Ht.\n(m)",0.6),
         ("S.W\n(m)",0.65),
-        ("Dir.",0.6),("Spd.\n(kts)",0.65),
+        ("Dir.",0.6),("Spd.\n(m/s)",0.65),
         ("Conf.",1.5),
     ]
     NC = len(COLS)
@@ -311,7 +311,7 @@ def make_full_table(doc, df_sorted):
                 fmt(rd.get("sw2_period_s"),0), fmt(rd.get("sw2_ht_m"),1),
                 fmt(swh,1),
                 str(rd.get("cur_dir") or "—"),
-                fmt(rd.get("cur_spd_kt"),1),
+                fmt(rd.get("cur_spd_ms"),2),
                 "",  # Confidence — sera fusionnée (col 22)
             ]
 
@@ -458,7 +458,7 @@ def generate_word_bulletin(df, run_datetime, warning_text=None, output_path=None
 
     # Légende
     pl=doc.add_paragraph(); pl.paragraph_format.space_before=Pt(2)
-    ar(pl,"🟨 Weather condition: select from dropdown  |  🟩 Confidence: enter manually  |  Dir=Direction | Spd=Speed(kts) | Per=Period(s) | Ht=Height(m) | S.W=Significant Wave Height",sz=8,italic=True,color=RGBColor(0x66,0x66,0x66))
+    ar(pl,"🟨 Weather condition: select from dropdown  |  🟩 Confidence: enter manually  |  Dir=Direction | Spd=Speed (kts for wind, m/s for currents) | Per=Period(s) | Ht=Height(m) | S.W=Significant Wave Height",sz=8,italic=True,color=RGBColor(0x66,0x66,0x66))
 
     # ── Page portrait : Figure 1 + Marées ────────────────────────────────
     sec_port(doc)

@@ -12,6 +12,121 @@ from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
 import config
 
+# =============================================================================
+# ECMWF OpenCharts — téléchargement automatique des images
+# =============================================================================
+
+ECMWF_BASE = "https://charts.ecmwf.int/opencharts-api/v1/products"
+
+def _ecmwf_base_time(run_datetime: datetime) -> str:
+    """Formate run_datetime en base_time ISO8601 pour l'API ECMWF."""
+    # On utilise toujours 00Z ou 12Z — aligner sur la run 00Z du jour du run
+    run_00z = run_datetime.replace(hour=0, minute=0, second=0, microsecond=0)
+    return run_00z.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+def _ecmwf_valid_time(run_datetime: datetime) -> str:
+    """J+1 à 12UTC = valid_time pour Figure 3."""
+    vt = run_datetime.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1, hours=12)
+    return vt.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+def fetch_ecmwf_image(url: str, label: str = "") -> io.BytesIO | None:
+    """
+    Télécharge une image depuis l'API ECMWF OpenCharts.
+    L'API retourne d'abord un JSON contenant data.link.href → URL de l'image PNG.
+    Retourne un BytesIO prêt à être inséré dans python-docx, ou None si échec.
+    """
+    try:
+        import requests
+        headers = {"User-Agent": "Mozilla/5.0 (METEO-BENIN pipeline)"}
+
+        # Étape 1 : appel API → JSON avec l'URL de l'image
+        resp = requests.get(url, headers=headers, timeout=30)
+        resp.raise_for_status()
+
+        content_type = resp.headers.get("Content-Type", "")
+
+        if "image" in content_type:
+            # Cas direct (rare) — déjà une image
+            img_url = None
+            img_data = resp.content
+        elif "json" in content_type or "text" in content_type:
+            # Cas normal — extraire l'URL depuis le JSON
+            data = resp.json()
+            img_url = data.get("data", {}).get("link", {}).get("href")
+            if not img_url:
+                print(f"  ⚠️  {label} : champ data.link.href absent dans la réponse JSON")
+                return None
+            # Étape 2 : téléchargement de l'image
+            resp2 = requests.get(img_url, headers=headers, timeout=60)
+            resp2.raise_for_status()
+            img_data = resp2.content
+        else:
+            print(f"  ⚠️  {label} : Content-Type inattendu ({content_type})")
+            return None
+
+        buf = io.BytesIO(img_data)
+        buf.seek(0)
+        print(f"  ✅ Image téléchargée : {label}")
+        return buf
+
+    except Exception as e:
+        print(f"  ⚠️  Échec téléchargement {label} : {e}")
+        return None
+
+def build_ecmwf_urls(run_datetime: datetime) -> dict:
+    """
+    Construit les 5 URLs ECMWF en fonction du run_datetime.
+    Retourne un dict avec les clés : ensgram, swh_dir, swh_prob, mwp_8s, mwp_15s
+    """
+    from urllib.parse import quote
+    bt = _ecmwf_base_time(run_datetime)   # base_time = 00Z du jour du run
+    vt = _ecmwf_valid_time(run_datetime)  # valid_time = J+1 12UTC
+    proj = "opencharts_northern_africa"
+
+    def enc(s): return quote(s, safe="")
+
+    # station_name : encoder en ASCII pur (enlever accents)
+    import unicodedata
+    station_name = unicodedata.normalize("NFKD", config.POINT["name"])
+    station_name = station_name.encode("ascii", "ignore").decode("ascii")
+
+    return {
+        "ensgram": (
+            f"{ECMWF_BASE}/opencharts_meteogram/"
+            f"?base_time={enc(bt)}"
+            f"&epsgram=classical_wave"
+            f"&lat={config.POINT['lat']}"
+            f"&lon={config.POINT['lon']}"
+            f"&station_name={enc(station_name)}"
+        ),
+        "swh_dir": (
+            f"{ECMWF_BASE}/medium-swh-mwd/"
+            f"?base_time={enc(bt)}"
+            f"&valid_time={enc(bt)}"
+            f"&projection={proj}"
+        ),
+        "swh_prob": (
+            f"{ECMWF_BASE}/medium-swh-probability/"
+            f"?base_time={enc(bt)}"
+            f"&valid_time={enc(vt)}"
+            f"&projection={proj}"
+        ),
+        "mwp_8s": (
+            f"{ECMWF_BASE}/medium-mwp-probability/"
+            f"?base_time={enc(bt)}"
+            f"&valid_time={enc(vt)}"
+            f"&projection={proj}"
+            f"&threshold=8"
+        ),
+        "mwp_15s": (
+            f"{ECMWF_BASE}/medium-mwp-probability/"
+            f"?base_time={enc(bt)}"
+            f"&valid_time={enc(vt)}"
+            f"&projection={proj}"
+            f"&threshold=15"
+        ),
+    }
+
 LOGO_REP = Path("D:/pipeline/logo_republique.png")
 LOGO_MET = Path("D:/pipeline/logo_meteo_oval.png")   # logo oval seul (col droite en-tête)
 BLUE_MED = RGBColor(0x2E,0x75,0xB6); WHITE = RGBColor(0xFF,0xFF,0xFF); BLACK = RGBColor(0,0,0)
@@ -517,27 +632,70 @@ def generate_word_bulletin(df, run_datetime, warning_text=None, output_path=None
 
     # ── Page portrait : Figure 2 ENSgram ─────────────────────────────────
     sec_port(doc)
-    izone(doc,"[ Insert ENSgram image here — copy/paste from ECMWF website ]",hcm=10)
+    print("  🌐 Téléchargement Figure 2 (ENSgram ECMWF)...")
+    ecmwf_urls = build_ecmwf_urls(run_datetime)
+    img_ensgram = fetch_ecmwf_image(ecmwf_urls["ensgram"], "ENSgram")
+
+    if img_ensgram:
+        pe=doc.add_paragraph(); pe.alignment=WD_ALIGN_PARAGRAPH.CENTER
+        pe.paragraph_format.space_before=Pt(4); pe.paragraph_format.space_after=Pt(2)
+        pe.add_run().add_picture(img_ensgram, width=Cm(17))
+    else:
+        izone(doc,"[ ENSgram ECMWF — image non disponible (vérifier connexion) ]",hcm=8)
+
     pf2=doc.add_paragraph(); pf2.alignment=WD_ALIGN_PARAGRAPH.CENTER; pf2.paragraph_format.space_before=Pt(2); pf2.paragraph_format.space_after=Pt(4)
     ar(pf2,f"Figure 2: Wave ensemblegram issued by ECMWF from {ordinal(dt_start.day)} to {ordinal(dt_end.day)} {ENG_MF[dt_start.month]} {dt_start.year}",sz=12,bold=True)
     pc2=doc.add_paragraph(); ar(pc2,"❖  Significant wave heights are forecast to...",sz=12,bold=True)
     tzone(doc,"[ Commentary on ENSgram — enter text here ]",sz=9)
 
-    # ── Page portrait : Figure 3 (4 images) ──────────────────────────────
+    # ── Page portrait : Figure 3 (4 cartes ECMWF) ────────────────────────
     sec_port(doc)
     fig3d=run_datetime+timedelta(days=1)
-    SUBS=["Significant wave height and mean direction","Probabilities: significant wave height","Probabilities: mean wave period (≥8s)","Probabilities: mean wave period (≥15s)"]
+    print("  🌐 Téléchargement Figure 3 (4 cartes ECMWF)...")
+
+    FIG3_KEYS   = ["swh_dir", "swh_prob", "mwp_8s", "mwp_15s"]
+    FIG3_LABELS = [
+        "SWH & mean direction",
+        "Prob. SWH ≥2m",
+        "Prob. mean wave period ≥8s",
+        "Prob. mean wave period ≥15s",
+    ]
+    fig3_imgs = [fetch_ecmwf_image(ecmwf_urls[k], FIG3_LABELS[i])
+                 for i, k in enumerate(FIG3_KEYS)]
+
     it=doc.add_table(rows=2,cols=2); it.style='Table Grid'; it.alignment=WD_TABLE_ALIGNMENT.CENTER
     cells=[it.rows[0].cells[0],it.rows[0].cells[1],it.rows[1].cells[0],it.rows[1].cells[1]]
-    for idx,cell in enumerate(cells):
+
+    for idx, cell in enumerate(cells):
         snb(cell); cell.width=Cm(8.5)
-        # Zone image uniquement — sans titre
-        pi=cell.add_paragraph(); pi.alignment=WD_ALIGN_PARAGRAPH.CENTER
-        pi.paragraph_format.space_before=Pt(2); pi.paragraph_format.space_after=Pt(2)
-        pp2=pi._p.get_or_add_pPr(); s2=OxmlElement('w:shd'); s2.set(qn('w:val'),'clear'); s2.set(qn('w:color'),'auto'); s2.set(qn('w:fill'),'F0F8FF'); pp2.append(s2)
-        sp2=OxmlElement('w:spacing'); sp2.set(qn('w:before'),'1200'); sp2.set(qn('w:after'),'1200'); pp2.append(sp2)
-        ri=pi.add_run(f"[ Image {idx+1} ]"); ri.font.size=Pt(9); ri.font.italic=True; ri.font.color.rgb=RGBColor(0xAA,0xAA,0xAA)
-        cell.paragraphs[0]._p.getparent().remove(cell.paragraphs[0]._p)
+        # Supprimer paragraphe vide initial
+        if cell.paragraphs:
+            cell.paragraphs[0]._p.getparent().remove(cell.paragraphs[0]._p)
+
+        # Sous-titre de la carte
+        pt_sub = cell.add_paragraph()
+        pt_sub.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        pt_sub.paragraph_format.space_before = Pt(2)
+        pt_sub.paragraph_format.space_after  = Pt(1)
+        r_sub = pt_sub.add_run(FIG3_LABELS[idx])
+        r_sub.font.size  = Pt(7)
+        r_sub.font.bold  = True
+        r_sub.font.color.rgb = RGBColor(0x1F,0x4E,0x79)
+
+        # Image ou placeholder
+        pi = cell.add_paragraph()
+        pi.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        pi.paragraph_format.space_before = Pt(1)
+        pi.paragraph_format.space_after  = Pt(2)
+
+        if fig3_imgs[idx]:
+            pi.add_run().add_picture(fig3_imgs[idx], width=Cm(8.0))
+        else:
+            pp2 = pi._p.get_or_add_pPr()
+            s2  = OxmlElement('w:shd'); s2.set(qn('w:val'),'clear'); s2.set(qn('w:color'),'auto'); s2.set(qn('w:fill'),'F0F8FF'); pp2.append(s2)
+            sp2 = OxmlElement('w:spacing'); sp2.set(qn('w:before'),'800'); sp2.set(qn('w:after'),'800'); pp2.append(sp2)
+            ri  = pi.add_run(f"[ Image {idx+1} — non disponible ]")
+            ri.font.size = Pt(8); ri.font.italic = True; ri.font.color.rgb = RGBColor(0xAA,0xAA,0xAA)
 
     # Titre Figure 3 — sous le tableau d'images
     pf3=doc.add_paragraph(); pf3.alignment=WD_ALIGN_PARAGRAPH.CENTER; pf3.paragraph_format.space_before=Pt(4); pf3.paragraph_format.space_after=Pt(2)

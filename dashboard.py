@@ -863,11 +863,11 @@ def render_sidebar():
             value=False, key="show_past"
         )
 
-        # Valeur par défaut : maintenant (arrondi au pas de 3h) ou début bulletin
-        _now_local = now_local()
-        # Trouver le prochain pas de temps >= maintenant
-        _future_times = [t for t in _times if t >= _now_local]
-        _def_start = _future_times[0] if _future_times and not show_past else _dt_min
+        # Valeur par défaut : 19h du jour J (première échéance utile du bulletin)
+        _19h_jour_j = _dt_min.replace(hour=19, minute=0, second=0, microsecond=0)
+        # Si 19h est dans les données → partir de 19h, sinon premier pas disponible
+        _19h_times = [t for t in _times if t >= _19h_jour_j]
+        _def_start = _19h_times[0] if _19h_times and not show_past else _dt_min
         _def_end   = _dt_max
 
         col_a, col_b = st.columns(2)

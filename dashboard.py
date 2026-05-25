@@ -32,6 +32,8 @@ def now_local() -> datetime:
 # ── URL CSV GitHub ────────────────────────────────────────────────────────────
 GITHUB_RAW_URL  = "https://raw.githubusercontent.com/DianeLaourou/Ecmwf_open_data-point-based-forecast/main/"
 GITHUB_TREE_URL = "https://api.github.com/repos/DianeLaourou/Ecmwf_open_data-point-based-forecast/git/trees/main?recursive=0"
+GITHUB_OWNER    = "DianeLaourou"
+GITHUB_REPO_BT  = "Benin-Terminal-Forecast"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # CONFIG PAGE
@@ -252,6 +254,19 @@ ALERT_SWH_WARNING  = 1.6
 ALERT_SWH_DANGER   = 2.0
 ALERT_WIND_WARNING = 15
 ALERT_WIND_DANGER  = 20
+
+# ── Bénin Terminal — seuils rafales (km/h) par hauteur ───────────────────
+BT_THRESHOLDS = {
+    "10m": {"green": 28,  "yellow": 49,  "orange": 74 },
+    "22m": {"green": 33,  "yellow": 57,  "orange": 86 },
+    "60m": {"green": 40,  "yellow": 70,  "orange": 107},
+    "70m": {"green": 40,  "yellow": 72,  "orange": 109},
+}
+
+POINTS = {
+    "seme":    {"label": "🌊 Sème",              "lat": 6.22, "lon": 2.63},
+    "terminal":{"label": "⚓ Port de Cotonou",   "lat": 6.35, "lon": 2.43},
+}
 
 VAR_META = {
     "swh_m":         {"FR": {"label": "Hauteur significative des vagues (SWH)", "short": "SWH",          "group": "grp_waves"},
@@ -574,14 +589,15 @@ def apply_word_corrections(df_base: pd.DataFrame, df_corr: pd.DataFrame) -> pd.D
 # HELPERS GRAPHIQUES
 # ─────────────────────────────────────────────────────────────────────────────
 def get_alert_level(df):
-    swh_max  = df["swh_m"].max()         if "swh_m"         in df.columns else 0
-    wind_max = df["wind10_spd_kt"].max() if "wind10_spd_kt" in df.columns else 0
-    if swh_max >= ALERT_SWH_DANGER or wind_max >= ALERT_WIND_DANGER:
-        return T("alert_danger"),  "warning-red",    f"{T('warn_danger')}  SWH max {swh_max:.1f} m — {T('kpi_wind')} {wind_max:.0f} kt."
-    elif swh_max >= ALERT_SWH_WARNING or wind_max >= ALERT_WIND_WARNING:
-        return T("alert_caution"), "warning-yellow", f"{T('warn_caution')} SWH max {swh_max:.1f} m — {T('kpi_wind')} {wind_max:.0f} kt."
+    swh_max  = df["swh_m"].max()          if "swh_m"          in df.columns else 0
+    # Alerte vent basée sur les RAFALES 10m (pas le vent moyen)
+    gust_max = df["wind10_gust_kt"].max() if "wind10_gust_kt" in df.columns else 0
+    if swh_max >= ALERT_SWH_DANGER or gust_max >= ALERT_WIND_DANGER:
+        return T("alert_danger"),  "warning-red",    f"{T('warn_danger')}  SWH max {swh_max:.1f} m — Rafales max {gust_max:.0f} kt."
+    elif swh_max >= ALERT_SWH_WARNING or gust_max >= ALERT_WIND_WARNING:
+        return T("alert_caution"), "warning-yellow", f"{T('warn_caution')} SWH max {swh_max:.1f} m — Rafales max {gust_max:.0f} kt."
     else:
-        return T("alert_normal"),  "warning-none",   f"{T('warn_none')}    SWH max {swh_max:.1f} m — {T('kpi_wind')} {wind_max:.0f} kt."
+        return T("alert_normal"),  "warning-none",   f"{T('warn_none')}    SWH max {swh_max:.1f} m — Rafales max {gust_max:.0f} kt."
 
 
 def clean_df(df: pd.DataFrame) -> pd.DataFrame:
@@ -812,6 +828,17 @@ def render_sidebar():
             key="lang_radio",
         )
         st.session_state["lang"] = "FR" if lang_choice.startswith("🇫🇷") else "EN"
+
+        st.divider()
+
+        # ── Sélecteur de point ────────────────────────────────
+        point_choice = st.radio(
+            "📍 Point de prévision",
+            ["🌊 Sème", "⚓ Port de Cotonou"],
+            horizontal=True,
+            key="point_radio",
+        )
+        st.session_state["point"] = "terminal" if "Cotonou" in point_choice else "seme"
 
         st.divider()
         st.markdown(f"## {T('settings')}")
@@ -1187,6 +1214,11 @@ def main():
 
     params = render_sidebar()
 
+    # ── Routage selon le point sélectionné ───────────────────
+    if st.session_state.get("point") == "terminal":
+        render_benin_terminal()
+        return
+
     # (données déjà chargées ci-dessus)
 
     # Filtre temporel
@@ -1256,6 +1288,241 @@ def main():
         © 2026 · LAOUROU MAKONDJOU DIANE · Météorologiste &amp; Data Scientist · METEO-BENIN / DPROM / SPAM<br>
         ECMWF Open Data (CC BY 4.0) · Copernicus Marine Service
     </div>""", unsafe_allow_html=True)
+
+
+# =============================================================================
+# BÉNIN TERMINAL — Fonctions dédiées
+# =============================================================================
+
+def bt_get_alert(val, height):
+    """Niveau d'alerte rafale pour une hauteur donnée (Bénin Terminal)."""
+    t = BT_THRESHOLDS[height]
+    if val <= t["green"]:   return "green",  "🟢 Vert"
+    if val <= t["yellow"]:  return "yellow", "🟡 Jaune"
+    if val <= t["orange"]:  return "orange", "🟠 Orange"
+    return "red", "🔴 Rouge"
+
+def bt_global_alert(df):
+    """Niveau d'alerte global Bénin Terminal."""
+    levels = {"green":0,"yellow":1,"orange":2,"red":3}
+    mx = 0
+    for h, col in [("10m","RafaleV10_Km/h"),("22m","RafaleV22_Km/h"),
+                   ("60m","RafaleV60_Km/h"),("70m","RafaleV70_Km/h")]:
+        if col in df.columns:
+            for v in df[col].dropna():
+                lvl, _ = bt_get_alert(v, h)
+                mx = max(mx, levels[lvl])
+    labels = {
+        0: ("🟢 Vert",   "warning-none",   "Conditions favorables aux opérations portuaires."),
+        1: ("🟡 Jaune",  "warning-yellow",  "Vigilance recommandée — surveiller l'évolution."),
+        2: ("🟠 Orange", "warning-yellow",  "Conditions difficiles — opérations à évaluer."),
+        3: ("🔴 Rouge",  "warning-red",     "Opérations dangereuses — arrêt recommandé."),
+    }
+    return labels[mx]
+
+def bt_load_csv():
+    """Charge le dernier CSV Bénin Terminal depuis GitHub."""
+    import requests, io
+    url = f"https://api.github.com/repos/{GITHUB_OWNER}/{GITHUB_REPO_BT}/git/trees/main?recursive=1"
+    try:
+        r = requests.get(url, timeout=10)
+        files = [f["path"] for f in r.json().get("tree",[])
+                 if f["path"].endswith(".csv") and "ECMWF_Port" in f["path"]]
+        if not files: return None, []
+        files = sorted(files, reverse=True)
+        raw = f"https://raw.githubusercontent.com/{GITHUB_OWNER}/{GITHUB_REPO_BT}/main/{files[0]}"
+        df = pd.read_csv(io.StringIO(requests.get(raw, timeout=10).text))
+        df["forecast_time_local"] = pd.to_datetime(df["forecast_time_local"])
+        return df, files
+    except Exception as e:
+        return None, []
+
+def bt_plot_wind(df, height, v_col, g_col):
+    """Graphique vent + rafales avec zones colorées pour Bénin Terminal."""
+    import plotly.graph_objects as go
+    t = BT_THRESHOLDS[height]
+    x = df["forecast_time_local"].dt.strftime("%d/%m %H:%M")
+    fig = go.Figure()
+    ymax = max(df[g_col].max() * 1.2 if not df[g_col].empty else 50, t["orange"] + 20)
+    zones = [
+        (0, t["green"],  "rgba(46,204,113,0.08)"),
+        (t["green"],  t["yellow"], "rgba(241,196,15,0.10)"),
+        (t["yellow"], t["orange"], "rgba(230,126,34,0.12)"),
+        (t["orange"], ymax,        "rgba(231,76,60,0.14)"),
+    ]
+    for y0, y1, col in zones:
+        fig.add_hrect(y0=y0, y1=y1, fillcolor=col, line_width=0)
+    for val, color in [(t["green"],"#2ECC71"),(t["yellow"],"#F1C40F"),(t["orange"],"#E67E22")]:
+        fig.add_hline(y=val, line_dash="dot", line_color=color, line_width=1, opacity=0.6)
+    fig.add_trace(go.Scatter(x=x, y=df[v_col], name=f"Vent {height}",
+        line=dict(color="#4FC3F7", width=2), mode="lines+markers", marker=dict(size=4)))
+    fig.add_trace(go.Scatter(x=x, y=df[g_col], name=f"Rafales {height}",
+        line=dict(color="#FF8A65", width=2, dash="dash"), mode="lines+markers",
+        marker=dict(size=4, symbol="triangle-up"),
+        fill="tonexty", fillcolor="rgba(255,138,101,0.08)"))
+    fig.update_layout(
+        title=dict(text=f"⚡ Vent à {height}", font=dict(size=12, color="white")),
+        paper_bgcolor="#0E1117", plot_bgcolor="#161B2E",
+        font=dict(color="white", size=9), height=260,
+        margin=dict(l=50, r=50, t=35, b=55),
+        legend=dict(orientation="h", y=-0.3, font=dict(size=8)),
+        yaxis=dict(title="km/h", gridcolor="#2a2a3a", range=[0, ymax]),
+        xaxis=dict(gridcolor="#2a2a3a", tickangle=-45, tickfont=dict(size=7)),
+        hovermode="x unified",
+    )
+    return fig
+
+def render_benin_terminal():
+    """Affichage complet Bénin Terminal."""
+    import plotly.graph_objects as go
+    from plotly.subplots import make_subplots
+
+    st.markdown("""
+    <div style='background:linear-gradient(135deg,#0d2240,#1a3a5c);
+                border-radius:12px;padding:1.2rem 1.5rem;margin-bottom:1rem;
+                border:1px solid rgba(46,117,182,0.4);'>
+        <div style='font-size:2rem;'>⚓</div>
+        <h2 style='color:white;margin:0;'>Port de Cotonou — Bénin Terminal</h2>
+        <div style='color:#adb5bd;font-size:0.78rem;'>
+            📍 6.35°N, 2.43°E &nbsp;|&nbsp; Source : ECMWF via GEE &nbsp;|&nbsp;
+            METEO-BENIN / DPROM / SPAM
+        </div>
+    </div>""", unsafe_allow_html=True)
+
+    # Chargement CSV
+    uploaded = st.session_state.get("bt_csv_bytes")
+    df_bt = None
+
+    col_up, col_src = st.columns([2,1])
+    with col_up:
+        bt_file = st.file_uploader("📂 Charger un bulletin CSV", type=["csv"], key="bt_uploader")
+        if bt_file:
+            df_bt = pd.read_csv(bt_file)
+            df_bt["forecast_time_local"] = pd.to_datetime(df_bt["forecast_time_local"])
+            st.success(f"✅ {len(df_bt)} échéances chargées")
+
+    if df_bt is None:
+        st.info("💡 Chargez un bulletin CSV Bénin Terminal via le bouton ci-dessus.")
+        # Données démo
+        import numpy as np
+        now = now_local()
+        times = [now + timedelta(hours=2*i) for i in range(21)]
+        df_bt = pd.DataFrame({
+            "forecast_time_local": times,
+            "V10m_Dir":"SO","V10m_Km/h":  [10+5*np.sin(i/3) for i in range(21)],
+            "RafaleV10_Km/h":             [20+8*np.sin(i/3) for i in range(21)],
+            "V22m_Dir":"SO","V22m_Km/h":  [11+5*np.sin(i/3) for i in range(21)],
+            "RafaleV22_Km/h":             [22+9*np.sin(i/3) for i in range(21)],
+            "V60m_Dir":"SO","V60m_Km/h":  [13+6*np.sin(i/3) for i in range(21)],
+            "RafaleV60_Km/h":             [26+10*np.sin(i/3) for i in range(21)],
+            "V70m_Dir":"SO","V70m_Km/h":  [14+6*np.sin(i/3) for i in range(21)],
+            "RafaleV70_Km/h":             [28+11*np.sin(i/3) for i in range(21)],
+            "T(°C)":                      [27+np.sin(i/4) for i in range(21)],
+            "Pluie(mm)":                  [0.01]*21,
+        })
+        st.caption("⚠️ Données de démonstration")
+
+    # Alerte globale
+    lbl, css, msg = bt_global_alert(df_bt)
+    st.markdown(f'<div class="warning-box {css}"><b>{lbl}</b> — {msg}</div>',
+                unsafe_allow_html=True)
+
+    # KPI rafales
+    st.markdown("### 💨 Rafales actuelles")
+    now = now_local()
+    closest_idx = (df_bt["forecast_time_local"] - now).abs().argsort().iloc[0]
+    row = df_bt.iloc[closest_idx]
+    k1,k2,k3,k4,k5 = st.columns(5)
+    for col_w, height, g_col, label in [
+        (k1,"10m","RafaleV10_Km/h","Rafales 10m"),
+        (k2,"22m","RafaleV22_Km/h","Rafales 22m"),
+        (k3,"60m","RafaleV60_Km/h","Rafales 60m"),
+        (k4,"70m","RafaleV70_Km/h","Rafales 70m"),
+    ]:
+        v = row[g_col] if g_col in row else 0
+        lvl, lbl2 = bt_get_alert(v, height)
+        colors_map = {"green":"#2ECC71","yellow":"#F1C40F","orange":"#E67E22","red":"#E74C3C"}
+        with col_w:
+            st.markdown(f"""
+            <div class='kpi-card' style='border-top:3px solid {colors_map[lvl]};'>
+                <div class='kpi-label'>{label}</div>
+                <div class='kpi-value'>{v:.0f}</div>
+                <div class='kpi-unit'>km/h · {lbl2}</div>
+            </div>""", unsafe_allow_html=True)
+    with k5:
+        st.markdown(f"""
+        <div class='kpi-card'>
+            <div class='kpi-label'>T°C</div>
+            <div class='kpi-value'>{row["T(°C)"]:.1f}</div>
+            <div class='kpi-unit'>°C</div>
+        </div>""", unsafe_allow_html=True)
+
+    st.markdown("---")
+
+    # Graphiques vent
+    st.markdown("### 📊 Vent par niveau")
+    c1,c2 = st.columns(2)
+    with c1:
+        st.plotly_chart(bt_plot_wind(df_bt,"10m","V10m_Km/h","RafaleV10_Km/h"), use_container_width=True)
+        st.plotly_chart(bt_plot_wind(df_bt,"60m","V60m_Km/h","RafaleV60_Km/h"), use_container_width=True)
+    with c2:
+        st.plotly_chart(bt_plot_wind(df_bt,"22m","V22m_Km/h","RafaleV22_Km/h"), use_container_width=True)
+        st.plotly_chart(bt_plot_wind(df_bt,"70m","V70m_Km/h","RafaleV70_Km/h"), use_container_width=True)
+
+    # T°C + Pluie
+    fig_tp = make_subplots(specs=[[{"secondary_y":True}]])
+    x = df_bt["forecast_time_local"].dt.strftime("%d/%m %H:%M")
+    fig_tp.add_trace(go.Scatter(x=x, y=df_bt["T(°C)"], name="T°C",
+        line=dict(color="#FF6B6B",width=2), mode="lines+markers"), secondary_y=False)
+    fig_tp.add_trace(go.Bar(x=x, y=df_bt["Pluie(mm)"], name="Pluie (mm)",
+        marker_color="rgba(100,181,246,0.6)"), secondary_y=True)
+    fig_tp.update_layout(
+        title=dict(text="🌡️ Température & Pluie", font=dict(size=12, color="white")),
+        paper_bgcolor="#0E1117", plot_bgcolor="#161B2E",
+        font=dict(color="white",size=9), height=260,
+        margin=dict(l=50,r=80,t=35,b=55),
+        legend=dict(orientation="h",y=-0.3,font=dict(size=8)),
+        xaxis=dict(gridcolor="#2a2a3a",tickangle=-45,tickfont=dict(size=7)),
+        hovermode="x unified",
+    )
+    fig_tp.update_yaxes(title_text="T (°C)", gridcolor="#2a2a3a", secondary_y=False)
+    fig_tp.update_yaxes(title_text="Pluie (mm)", secondary_y=True)
+    st.plotly_chart(fig_tp, use_container_width=True)
+
+    # Tableau
+    st.markdown("### 📋 Tableau récapitulatif")
+    disp = df_bt.copy()
+    disp["forecast_time_local"] = disp["forecast_time_local"].dt.strftime("%d/%m %H:%M")
+    for col in ["V10m_Km/h","RafaleV10_Km/h","V22m_Km/h","RafaleV22_Km/h",
+                "V60m_Km/h","RafaleV60_Km/h","V70m_Km/h","RafaleV70_Km/h"]:
+        if col in disp.columns: disp[col] = disp[col].round(1)
+    if "T(°C)" in disp.columns: disp["T(°C)"] = disp["T(°C)"].round(1)
+    if "Pluie(mm)" in disp.columns: disp["Pluie(mm)"] = disp["Pluie(mm)"].round(3)
+
+    def style_bt(row):
+        styles = [""] * len(row)
+        cols = list(disp.columns)
+        for col_name, height in [("RafaleV10_Km/h","10m"),("RafaleV22_Km/h","22m"),
+                                  ("RafaleV60_Km/h","60m"),("RafaleV70_Km/h","70m")]:
+            if col_name in cols:
+                idx = cols.index(col_name)
+                lvl, _ = bt_get_alert(row[col_name], height)
+                cmap = {"green":"background-color:#1a3a2a;color:#2ECC71",
+                        "yellow":"background-color:#3a3a1a;color:#F1C40F",
+                        "orange":"background-color:#3a2a1a;color:#E67E22",
+                        "red":"background-color:#3a1a1a;color:#E74C3C"}
+                styles[idx] = cmap[lvl]
+        return styles
+
+    st.dataframe(disp.style.apply(style_bt, axis=1), use_container_width=True, height=380)
+
+    # Légende seuils
+    st.markdown("### 📌 Seuils d'alerte rafales (km/h)")
+    cl1, cl2 = st.columns(2)
+    with cl1:
+        st.markdown("| Hauteur | 🟢 Vert | 🟡 Jaune | 🟠 Orange | 🔴 Rouge |\n|--|--|--|--|--|\n| 10m | ≤28 | 29–49 | 50–74 | ≥75 |\n| 22m | ≤33 | 34–57 | 58–86 | ≥87 |")
+    with cl2:
+        st.markdown("| Hauteur | 🟢 Vert | 🟡 Jaune | 🟠 Orange | 🔴 Rouge |\n|--|--|--|--|--|\n| 60m | ≤40 | 41–70 | 71–107 | ≥107 |\n| 70m | ≤40 | 42–72 | 73–109 | ≥110 |")
 
 
 if __name__ == "__main__":

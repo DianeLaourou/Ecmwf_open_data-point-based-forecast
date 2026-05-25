@@ -851,14 +851,23 @@ def render_sidebar():
         # Bornes depuis session_state (df chargé dans main() avant sidebar)
         _df_b = st.session_state.get("df_loaded", generate_demo_data())
 
-        # Bornes réelles : début = première occurrence 19h, fin = dernière valeur
+        # Bornes réelles
         _df_b["valid_local"] = pd.to_datetime(_df_b["valid_local"])
         _dt_min = _df_b["valid_local"].min().to_pydatetime()
         _dt_max = _df_b["valid_local"].max().to_pydatetime()
         _times  = sorted(_df_b["valid_local"].dt.to_pydatetime().tolist())
 
-        # Valeur par défaut : toute la période du bulletin
-        _def_start = _dt_min
+        # Toggle : afficher les échéances passées
+        show_past = st.toggle(
+            "🕐 Voir les échéances passées" if st.session_state.get("lang","fr")=="fr" else "🕐 Show past forecasts",
+            value=False, key="show_past"
+        )
+
+        # Valeur par défaut : maintenant (arrondi au pas de 3h) ou début bulletin
+        _now_local = now_local()
+        # Trouver le prochain pas de temps >= maintenant
+        _future_times = [t for t in _times if t >= _now_local]
+        _def_start = _future_times[0] if _future_times and not show_past else _dt_min
         _def_end   = _dt_max
 
         col_a, col_b = st.columns(2)

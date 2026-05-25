@@ -33,9 +33,13 @@ def get_tides(start_date: datetime, days: int = 4) -> list:
     lat = config.POINT["lat"]
     lon = config.POINT["lon"]
 
-    # Timestamp de début et fin
-    start_ts = int(start_date.timestamp())
-    end_ts   = int((start_date + timedelta(days=days)).timestamp())
+    # Démarrer depuis minuit du jour J pour capturer toutes les marées
+    start_date_midnight = start_date.replace(hour=0, minute=0, second=0, microsecond=0)
+    start_ts = int(start_date_midnight.timestamp())
+    end_ts   = int((start_date_midnight + timedelta(days=days)).timestamp())
+
+    # Seuil : 19h locale du jour J — seules les marées après ce seuil sont utiles
+    cutoff_local = start_date.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(hours=19)
 
     url = "https://www.worldtides.info/api/v3"
     params = {
@@ -70,6 +74,10 @@ def get_tides(start_date: datetime, days: int = 4) -> list:
         dt_local = dt_utc + timedelta(hours=config.UTC_OFFSET)
         height   = extreme["height"]
         t_type   = "High" if extreme["type"] == "High" else "Low"
+
+        # Ignorer les marées avant 19h locale du jour J
+        if dt_local < cutoff_local:
+            continue
 
         results.append({
             "date"      : f"{ENG_DAYS[dt_local.weekday()]} {dt_local.day:02d} {ENG_MONTHS[dt_local.month]}",

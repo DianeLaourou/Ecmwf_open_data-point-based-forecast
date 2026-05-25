@@ -21,8 +21,11 @@ ECMWF_BASE = "https://charts.ecmwf.int/opencharts-api/v1/products"
 def _ecmwf_base_time(run_datetime: datetime) -> str:
     """Formate run_datetime en base_time ISO8601 pour l'API ECMWF."""
     # On utilise toujours 00Z ou 12Z — aligner sur la run 00Z du jour du run
-    run_00z = run_datetime.replace(hour=0, minute=0, second=0, microsecond=0)
-    return run_00z.strftime("%Y-%m-%dT%H:%M:%SZ")
+    from datetime import datetime as _dt
+    today_00z = _dt.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    run_00z   = run_datetime.replace(hour=0, minute=0, second=0, microsecond=0)
+    base = today_00z if today_00z >= run_00z else run_00z
+    return base.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 def _ecmwf_valid_time(run_datetime: datetime) -> str:
     """J+1 à 12UTC = valid_time pour Figure 3."""
@@ -102,7 +105,7 @@ def build_ecmwf_urls(run_datetime: datetime) -> dict:
         "swh_dir": (
             f"{ECMWF_BASE}/medium-swh-mwd/"
             f"?base_time={enc(bt)}"
-            f"&valid_time={enc(bt)}"
+            f"&valid_time={enc(vt)}"
             f"&projection={proj}"
         ),
         "swh_prob": (
@@ -116,14 +119,13 @@ def build_ecmwf_urls(run_datetime: datetime) -> dict:
             f"?base_time={enc(bt)}"
             f"&valid_time={enc(vt)}"
             f"&projection={proj}"
-            f"&threshold=8"
         ),
         "mwp_15s": (
             f"{ECMWF_BASE}/medium-mwp-probability/"
             f"?base_time={enc(bt)}"
             f"&valid_time={enc(vt)}"
             f"&projection={proj}"
-            f"&threshold=15"
+            f"&param=mwpg15"
         ),
     }
 
@@ -134,8 +136,13 @@ ENG_DS = {0:"Mon.",1:"Tue.",2:"Wed.",3:"Thu.",4:"Fri.",5:"Sat.",6:"Sun."}
 ENG_MS = {1:"Jan",2:"Feb",3:"Mar",4:"Apr",5:"May",6:"Jun",7:"Jul",8:"Aug",9:"Sep",10:"Oct",11:"Nov",12:"Dec"}
 ENG_DF = {0:"Monday",1:"Tuesday",2:"Wednesday",3:"Thursday",4:"Friday",5:"Saturday",6:"Sunday"}
 ENG_MF = {1:"January",2:"February",3:"March",4:"April",5:"May",6:"June",7:"July",8:"August",9:"September",10:"October",11:"November",12:"December"}
-DAY_BG = {0:"DBE5F1",1:"D8E4BC",2:"FFF2CC",3:"F2DCDB",4:"E5E0EC",5:"FDEADA",6:"EAD1DC"}
-WX_LIST = ["Sunny","Mostly sunny","Partly cloudy","Mostly cloudy","Overcast","Mostly sunny (night)","Partly cloudy (night)","Mostly cloudy (night)","Thunderstorm","Thunderstorm (moderate)","Thunderstorm (heavy)","Heavy rain showers","Light rain showers","Light rain showers (night)","Dust","Dust storm","Dry haze","Dry haze (night)","Fog / Mist"]
+DAY_BG = {0:"E2EFDA",1:"FFFFFF",2:"E2EFDA",3:"FFFFFF",4:"E2EFDA",5:"FFFFFF",6:"E2EFDA"}
+WX_LIST = [
+    "Sunny", "Mostly sunny", "Partly cloudy", "Mostly cloudy", "Cloudy", "Overcast",
+    "Light rain", "Moderate rain", "Heavy rain", "Rain showers",
+    "Thunderstorm", "Squally",
+    "Mist", "Fog", "Haze",
+]
 
 # Nombre de pas de temps par jour (8 pas de 3h sur 24h)
 STEPS_PER_DAY = 8
@@ -349,14 +356,14 @@ def make_full_table(doc, df_sorted):
     r0 = tbl.rows[0]
     # Col 0-1 (Date & Time) : vides mais bleu
     for j in range(2):
-        sbg(r0.cells[j], "2E75B6"); sbo(r0.cells[j])
+        sbg(r0.cells[j], "FFFFFF"); sbo(r0.cells[j])
     cw = r0.cells[2].merge(r0.cells[12])
-    sbg(cw,"2E75B6"); sbo(cw)
-    cp(cw,"Weather parameters",sz=9,bold=True,color=WHITE)
+    sbg(cw,"FFFFFF"); sbo(cw)
+    cp(cw,"Weather parameters",sz=9,bold=True,color=RGBColor(0,0,0))
     cw.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
     co = r0.cells[13].merge(r0.cells[22])
-    sbg(co,"2E75B6"); sbo(co)
-    cp(co,"Ocean parameters",sz=9,bold=True,color=WHITE)
+    sbg(co,"FFFFFF"); sbo(co)
+    cp(co,"Ocean parameters",sz=9,bold=True,color=RGBColor(0,0,0))
     co.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
 
     # ── Ligne 1 : groupes ─────────────────────────────────────────────────
@@ -364,8 +371,8 @@ def make_full_table(doc, df_sorted):
     for gs, ge, lbl in GRP:
         if gs in done: continue
         c = r1.cells[gs].merge(r1.cells[ge]) if gs != ge else r1.cells[gs]
-        sbg(c,"2E75B6"); sbo(c); smg(c,15,15,20,20)
-        cp(c, lbl, sz=7, bold=True, color=WHITE)
+        sbg(c,"FFFFFF"); sbo(c); smg(c,15,15,20,20)
+        cp(c, lbl, sz=7, bold=True, color=RGBColor(0,0,0))
         c.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
         for i in range(gs, ge+1): done.add(i)
 
@@ -374,13 +381,25 @@ def make_full_table(doc, df_sorted):
     r2 = tbl.rows[2]
     for j, (lbl, w) in enumerate(COLS):
         c = r2.cells[j]
-        sbg(c,"BDD7EE"); sbo(c); smg(c,15,15,20,20)
+        sbg(c,"FFFFFF"); sbo(c); smg(c,15,15,20,20)
         # Col 0 : "Date & Time" centré verticalement sur 3 lignes
         display_lbl = lbl if j != 0 else "Date & Time"
         cp(c, display_lbl, sz=6.5, bold=True,
-           color=RGBColor(0x1F,0x4E,0x79))
+           color=RGBColor(0,0,0))
         c.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
         c.width = Cm(w)
+
+    # ── Répétition des en-têtes sur chaque page (tblHeader) ─────────────
+    for row in tbl.rows[:3]:
+        tr = row._tr
+        trPr = tr.get_or_add_trPr()
+        # Supprimer si déjà présent
+        for existing in trPr.findall(qn('w:tblHeader')):
+            trPr.remove(existing)
+        # Insérer en première position
+        tblHeader = OxmlElement('w:tblHeader')
+        tblHeader.set(qn('w:val'), 'true')
+        trPr.insert(0, tblHeader)
 
     # ── Données : par jour avec fusions ───────────────────────────────────
     row_offset = 0  # décalage dans le tableau (après 3 lignes d'en-têtes)
@@ -388,7 +407,7 @@ def make_full_table(doc, df_sorted):
     for day_idx, day in enumerate(days):
         day_rows = df_sorted[df_sorted["_day"] == day]
         n_day = len(day_rows)
-        bg = DAY_BG[list(day_rows["_dt"])[0].weekday()]
+        # couleur alternée par ligne (voir row_bg ci-dessous)
 
         # Saut de page après le 2ème jour (entre jour 2 et jour 3)
         if day_idx == 2 and row_offset > 0:
@@ -430,16 +449,11 @@ def make_full_table(doc, df_sorted):
                 "",  # Confidence — sera fusionnée (col 22)
             ]
 
+            row_bg = "E2EFDA" if i % 2 == 0 else "FFFFFF"
             for j, v in enumerate(vals):
-                c = tr.cells[j]; cb = bg
-                try:
-                    if j==19 and swh and not math.isnan(float(swh)):
-                        if swh>=config.ALERT_SWH_DANGER: cb="FF0000"
-                        elif swh>=config.ALERT_SWH_WARNING: cb="FFCC00"
-                    if j==3 and ws and not math.isnan(float(ws)):
-                        if ws>=config.ALERT_WIND_DANGER: cb="FF0000"
-                        elif ws>=config.ALERT_WIND_WARNING: cb="FFCC00"
-                except: pass
+                c = tr.cells[j]; cb = row_bg
+                # Pas de surlignage couleur sur les cellules données
+                pass
 
                 sbg(c,cb); sbo(c); smg(c,12,12,18,18)
                 c.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
@@ -461,7 +475,7 @@ def make_full_table(doc, df_sorted):
             merged_date = tbl.rows[first_row_idx].cells[0].merge(
                           tbl.rows[last_row_idx].cells[0])
             day_label = f"{ENG_DS[list(day_rows['_dt'])[0].weekday()]} {list(day_rows['_dt'])[0].day:02d} {ENG_MS[list(day_rows['_dt'])[0].month]}"
-            sbg(merged_date, bg)
+            sbg(merged_date, "E2EFDA" if row_offset % 2 == 0 else "FFFFFF")
             sbo(merged_date)
             smg(merged_date,12,12,18,18)
             cp(merged_date, day_label, sz=7, bold=True)
@@ -481,44 +495,225 @@ def make_full_table(doc, df_sorted):
 
         row_offset += n_day
 
-    # Col 0 en-tête : laisser les 2 lignes séparées mais bleues
+    # Col 0 en-tête : fond blanc sans couleur
     for row_i in range(2):
         c = tbl.rows[row_i].cells[0]
-        sbg(c,"2E75B6"); sbo(c)
-        cp(c,"",sz=9,color=WHITE)
+        sbg(c,"FFFFFF"); sbo(c)
 
 def _safe(lst):
     """Remplace None/NaN par 0 pour matplotlib."""
     return [v if (v is not None and not (isinstance(v, float) and math.isnan(v))) else 0 for v in lst]
 
 def gen_chart(df_sorted):
-    import matplotlib; matplotlib.use("Agg"); import matplotlib.pyplot as plt
+    import matplotlib; matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    import matplotlib.ticker as ticker
+    import numpy as np
+
     times = pd.to_datetime(df_sorted["valid_local"])
     speed = _safe(df_sorted["wind10_spd_kt"].tolist())
     gust  = _safe(df_sorted["wind10_gust_kt"].tolist())
     mslp  = _safe(df_sorted["mslp_hpa"].tolist())
-    x = range(len(times))
-    lbl=[t.strftime("%H:%M") for t in times]; td={}; prev=None
-    for i,t in enumerate(times):
-        if t.date()!=prev: td[i]=f"{ENG_DS[t.weekday()]}\n{t.day}\n{ENG_MS[t.month]}\n{t.strftime('%H:%M')}"; prev=t.date()
-    fig,ax1=plt.subplots(figsize=(13,6.5)); fig.patch.set_facecolor("white")
-    ax2=ax1.twinx(); ax2.bar(x,mslp,color="#FFC000",alpha=0.8,label="MSLP",zorder=2); ax2.set_ylabel("Pressure (hPa)",fontsize=9); ax2.tick_params(axis="y",labelsize=8)
-    mc=[v for v in mslp if v]; 
-    if mc: ax2.set_ylim(min(mc)-3,max(mc)+3)
-    ax1.set_zorder(ax2.get_zorder()+1); ax1.patch.set_visible(False)
-    ax1.plot(x,speed,color="#4472C4",linewidth=2.5,label="Speed",zorder=5); ax1.plot(x,gust,color="#ED7D31",linewidth=2.5,label="Gust",zorder=5)
-    ax1.set_ylabel("Wind (Kts)",fontsize=9); ax1.set_xlabel("Times",fontsize=9); ax1.tick_params(axis="y",labelsize=8); ax1.set_xlim(-0.5,len(x)-0.5)
-    gc=[v for v in gust if v]; ax1.set_ylim(0,(max(gc) if gc else 20)+4); ax1.grid(True,linestyle="--",alpha=0.4,zorder=1)
-    ax1.set_xticks(list(x)); ax1.set_xticklabels([td.get(i,lbl[i]) for i in list(x)],fontsize=6.5,ha="center")
-    l1,lb1=ax1.get_legend_handles_labels(); l2,lb2=ax2.get_legend_handles_labels()
-    ax1.legend(l2+l1,lb2+lb1,loc="lower center",ncol=3,fontsize=8,bbox_to_anchor=(0.5,-0.28),frameon=True)
-    plt.tight_layout(); buf=io.BytesIO(); fig.savefig(buf,format="png",dpi=140,bbox_inches="tight"); plt.close(fig); buf.seek(0); return buf
+    x     = list(range(len(times)))
 
+    # ── Labels axe X : style du graphique de référence ───────────────────
+    # Premier pas de chaque jour → "Day. DD\nMon\nHH:00"
+    # Autres pas → "HH:00"
+    xtick_labels = []
+    prev_day = None
+    for i, t in enumerate(times):
+        if t.date() != prev_day:
+            xtick_labels.append(
+                f"{ENG_DS[t.weekday()]} {t.day}\n{ENG_MS[t.month]}\n{t.strftime('%H:%M')}"
+            )
+            prev_day = t.date()
+        else:
+            xtick_labels.append(t.strftime("%H:%M"))
+
+    # ── Figure ────────────────────────────────────────────────────────────
+    fig, ax1 = plt.subplots(figsize=(18, 6))
+    fig.patch.set_facecolor("white")
+    ax1.set_facecolor("white")
+
+    # ── Axe droit : MSLP barres jaunes ───────────────────────────────────
+    ax2 = ax1.twinx()
+    ax2.bar(x, mslp, color="#FFC000", alpha=0.85, label="MSLP", zorder=2, width=0.7)
+    ax2.set_ylabel("Pressure(hPa)", fontsize=14, fontweight="bold", color="#000000", labelpad=8)
+    ax2.tick_params(axis="y", labelsize=13, colors="#000000")
+    mc = [v for v in mslp if v]
+    if mc:
+        ax2.set_ylim(min(mc) - 3, max(mc) + 3)
+    ax2.yaxis.set_major_formatter(ticker.FormatStrFormatter('%d'))
+    ax2.spines["right"].set_color("#AAAAAA")
+
+    # ── Axe gauche : courbes vent ─────────────────────────────────────────
+    ax1.set_zorder(ax2.get_zorder() + 1)
+    ax1.patch.set_visible(False)
+    ax1.plot(x, speed, color="#4472C4", linewidth=2.0, label="Speed", zorder=5)
+    ax1.plot(x, gust,  color="#ED7D31", linewidth=2.0, label="Gust",  zorder=5)
+    ax1.set_ylabel("Wind (Kts)", fontsize=14, fontweight="bold", color="#000000", labelpad=8)
+    ax1.tick_params(axis="y", labelsize=13, colors="#000000")
+    gc = [v for v in gust if v]
+    ax1.set_ylim(0, (max(gc) if gc else 20) + 4)
+    ax1.set_xlim(-0.5, len(x) - 0.5)
+    ax1.grid(True, linestyle="--", alpha=0.4, color="#CCCCCC", zorder=1)
+    ax1.yaxis.set_major_formatter(ticker.FormatStrFormatter('%d'))
+    ax1.spines["left"].set_color("#AAAAAA")
+    ax1.spines["top"].set_visible(False)
+    ax2.spines["top"].set_visible(False)
+
+    # ── Axe X ─────────────────────────────────────────────────────────────
+    ax1.set_xticks(x)
+    ax1.set_xticklabels(xtick_labels, fontsize=11, color="#000000",
+                        ha="center", va="top", multialignment="center")
+    ax1.tick_params(axis="x", which="major", length=4, color="#AAAAAA", pad=4)
+    ax1.set_xlabel("Times", fontsize=14, fontweight="bold", labelpad=10)
+
+    # ── Titre ─────────────────────────────────────────────────────────────
+    ax1.set_title("Wind at 10m and MSLP", fontsize=16, fontweight="bold", pad=12)
+
+    # ── Légende centrée en bas ────────────────────────────────────────────
+    l1, lb1 = ax1.get_legend_handles_labels()
+    l2, lb2 = ax2.get_legend_handles_labels()
+    ax1.legend(l2 + l1, lb2 + lb1,
+               loc="lower center", ncol=3, fontsize=13,
+               frameon=True, framealpha=0.95, edgecolor="#CCCCCC",
+               bbox_to_anchor=(0.5, -0.38))
+
+    plt.tight_layout(pad=1.2)
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", dpi=200, bbox_inches="tight")
+    plt.close(fig)
+    buf.seek(0)
+    return buf
 def sec_land(doc):
     s=doc.add_section(); s.orientation=WD_ORIENT.LANDSCAPE; s.page_width=Cm(29.7); s.page_height=Cm(21); s.left_margin=Cm(1.2); s.right_margin=Cm(1.2); s.top_margin=Cm(1.2); s.bottom_margin=Cm(1.2); return s
 
 def sec_port(doc):
     s=doc.add_section(); s.orientation=WD_ORIENT.PORTRAIT; s.page_width=Cm(21); s.page_height=Cm(29.7); s.left_margin=Cm(1.5); s.right_margin=Cm(1.5); s.top_margin=Cm(1.5); s.bottom_margin=Cm(1.5); return s
+
+# =============================================================================
+# TEXTES DYNAMIQUES — Met Situation & Weather
+# =============================================================================
+
+def generate_met_situation(df: pd.DataFrame, run_datetime: datetime) -> str:
+    """
+    Génère automatiquement le texte Met Situation.
+    Analyse : MSLP (anticyclone Sainte-Hélène), vent dominant (FIT/mousson).
+    """
+    df = df.copy()
+    df["_dt"] = pd.to_datetime(df["valid_local"])
+
+    mslp_vals  = df["mslp_hpa"].dropna()
+    mslp_mean  = mslp_vals.mean()
+    mslp_min   = mslp_vals.min()
+    mslp_max   = mslp_vals.max()
+
+    wind_vals  = df["wind10_spd_kt"].dropna()
+    wind_mean  = wind_vals.mean()
+
+    # Direction dominante sur la période
+    dir_counts = df["wind10_dir"].dropna().value_counts()
+    dom_dir    = dir_counts.index[0] if not dir_counts.empty else "—"
+
+    # Détermination du régime synoptique
+    # Anticyclone Sainte-Hélène actif si MSLP > 1013 hPa en moyenne
+    if mslp_mean >= 1013:
+        anticyclone = (f"The Saint Helena Anticyclone is active over the South Atlantic, "
+                       f"maintaining mean sea level pressure around {mslp_mean:.0f} hPa over the area.")
+    else:
+        anticyclone = (f"The Saint Helena Anticyclone influence is weakened, "
+                       f"with mean sea level pressure averaging {mslp_mean:.0f} hPa over the forecast period.")
+
+    # FIT / Mousson : vent dominant du SW ou S indique mousson active
+    monsoon_dirs = {"SW","SSW","WSW","S","SSE","SE"}
+    if dom_dir in monsoon_dirs and wind_mean >= 8:
+        fit_monsoon = (f"The Inter-Tropical Front (ITF) is positioned north of the area. "
+                       f"The West African Monsoon is active, with dominant {dom_dir} winds "
+                       f"averaging {wind_mean:.0f} knots, bringing moist maritime air onshore.")
+    elif dom_dir in monsoon_dirs:
+        fit_monsoon = (f"The West African Monsoon flow is present but moderate, "
+                       f"with {dom_dir} winds averaging {wind_mean:.0f} knots. "
+                       f"The ITF remains in the background of the forecast area.")
+    else:
+        fit_monsoon = (f"Dominant winds from {dom_dir} suggest limited monsoon penetration. "
+                       f"The ITF position may be south of the area, "
+                       f"with mean wind speed of {wind_mean:.0f} knots.")
+
+    return f"{anticyclone} {fit_monsoon}"
+
+
+def generate_weather_summary(df: pd.DataFrame, run_datetime: datetime) -> str:
+    """
+    Génère automatiquement le texte Weather — un paragraphe naturel,
+    style bulletin météo, sans chiffres ni bullets.
+    """
+    df = df.copy()
+    df["_dt"] = pd.to_datetime(df["valid_local"])
+    df["_day"] = df["_dt"].dt.date
+    days = sorted(df["_day"].unique())
+
+    def sky_desc(rain_max):
+        if rain_max is None or (isinstance(rain_max, float) and math.isnan(rain_max)):
+            return "partly cloudy"
+        if rain_max >= 70: return "overcast with rain expected"
+        if rain_max >= 50: return "cloudy with possible showers"
+        if rain_max >= 30: return "partly cloudy with isolated showers"
+        return "mostly sunny to partly cloudy"
+
+    def wind_desc(wind_max):
+        if wind_max is None or (isinstance(wind_max, float) and math.isnan(wind_max)):
+            return "light winds"
+        if wind_max >= 20: return "strong winds"
+        if wind_max >= 15: return "moderate to fresh winds"
+        if wind_max >= 10: return "light to moderate winds"
+        return "light winds"
+
+    def sea_desc(swh_max):
+        if swh_max is None or (isinstance(swh_max, float) and math.isnan(swh_max)):
+            return "slight to moderate seas"
+        if swh_max >= 2.0: return "rough seas"
+        if swh_max >= 1.6: return "moderate to rough seas"
+        if swh_max >= 1.0: return "moderate seas"
+        return "slight seas"
+
+    def risk_desc(swh_max, wind_max):
+        if swh_max is None or (isinstance(swh_max, float) and math.isnan(swh_max)):
+            return ""
+        if swh_max >= 2.0 or (wind_max and not math.isnan(float(wind_max)) and wind_max >= 20):
+            return " Mariners are advised to exercise extreme caution."
+        if swh_max >= 1.6 or (wind_max and not math.isnan(float(wind_max)) and wind_max >= 15):
+            return " Caution is advised for small crafts."
+        return ""
+
+    sentences = []
+    for i, day in enumerate(days):
+        day_df   = df[df["_day"] == day]
+        dt_obj   = pd.Timestamp(day)
+        day_lbl  = ENG_DF[dt_obj.weekday()]
+
+        swh_max  = day_df["swh_m"].dropna().max()         if "swh_m"         in day_df.columns else None
+        wind_max = day_df["wind10_spd_kt"].dropna().max()  if "wind10_spd_kt" in day_df.columns else None
+        rain_max = day_df["rain_pct"].dropna().max()       if "rain_pct"      in day_df.columns else None
+
+        sky  = sky_desc(rain_max)
+        wind = wind_desc(wind_max)
+        sea  = sea_desc(swh_max)
+        risk = risk_desc(swh_max, wind_max)
+
+        if i == 0:
+            prefix = "Tonight into"
+        elif i == 1:
+            prefix = "On"
+        else:
+            prefix = "By"
+
+        sentences.append(
+            f"{prefix} {day_lbl}, {sky} skies are expected with {wind} and {sea}.{risk}"
+        )
+
+    return " ".join(sentences)
+
 
 def generate_word_bulletin(df, run_datetime, warning_text=None, output_path=None):
     # Nom du fichier avec date et run — identique à l'Excel
@@ -556,13 +751,21 @@ def generate_word_bulletin(df, run_datetime, warning_text=None, output_path=None
     elif bg=="E2EFDA": r.font.color.rgb=RGBColor(0x1E,0x6B,0x3C)
     else: r.font.color.rgb=RGBColor(0x7F,0x4E,0x00)
 
-    # Met Situation — 12pt
+    # Met Situation — dynamique
+    print("  📝 Génération Met Situation...")
+    met_sit_text = generate_met_situation(df_sorted, run_datetime)
     pm=doc.add_paragraph(); pm.paragraph_format.space_before=Pt(3); pm.paragraph_format.space_after=Pt(1)
-    ar(pm,"Met Situation:",sz=12,bold=True); tzone(doc,"[ Met situation — enter text here ]",sz=12)
+    ar(pm,"Met Situation:",sz=12,bold=True)
+    pm2=doc.add_paragraph(); pm2.paragraph_format.space_before=Pt(0); pm2.paragraph_format.space_after=Pt(2)
+    r_m=pm2.add_run(met_sit_text); r_m.font.size=Pt(11)
 
-    # Weather — 12pt
+    # Weather — dynamique, paragraphe naturel
+    print("  📝 Génération Weather summary...")
+    weather_text = generate_weather_summary(df_sorted, run_datetime)
     pw2=doc.add_paragraph(); pw2.paragraph_format.space_before=Pt(3); pw2.paragraph_format.space_after=Pt(1)
-    ar(pw2,"Weather:",sz=12,bold=True); tzone(doc,"[ Weather description — enter text here ]",sz=12)
+    ar(pw2,"Weather:",sz=12,bold=True)
+    pw3=doc.add_paragraph(); pw3.paragraph_format.space_before=Pt(0); pw3.paragraph_format.space_after=Pt(2)
+    r_w=pw3.add_run(weather_text); r_w.font.size=Pt(11)
 
     # Titre Table 1 — 12pt
     pt=doc.add_paragraph(); pt.paragraph_format.space_before=Pt(4); pt.paragraph_format.space_after=Pt(2)
@@ -604,18 +807,18 @@ def generate_word_bulletin(df, run_datetime, warning_text=None, output_path=None
 
     # En-tête ligne 1
     r0=tide.rows[0]
-    sbg(r0.cells[0],"2E75B6"); sbo(r0.cells[0]); cp(r0.cells[0],"Dates",sz=9,bold=True,color=WHITE)
-    ch=r0.cells[1].merge(r0.cells[4]); sbg(ch,"2E75B6"); sbo(ch); cp(ch,"HIGH TIDES",sz=9,bold=True,color=WHITE)
-    cl2=r0.cells[5].merge(r0.cells[8]); sbg(cl2,"2E75B6"); sbo(cl2); cp(cl2,"LOW TIDES",sz=9,bold=True,color=WHITE)
+    sbg(r0.cells[0],"FFFFFF"); sbo(r0.cells[0]); cp(r0.cells[0],"Dates",sz=9,bold=True,color=RGBColor(0,0,0))
+    ch=r0.cells[1].merge(r0.cells[4]); sbg(ch,"FFFFFF"); sbo(ch); cp(ch,"HIGH TIDES",sz=9,bold=True,color=RGBColor(0,0,0))
+    cl2=r0.cells[5].merge(r0.cells[8]); sbg(cl2,"FFFFFF"); sbo(cl2); cp(cl2,"LOW TIDES",sz=9,bold=True,color=RGBColor(0,0,0))
 
     # En-tête ligne 2
     r1=tide.rows[1]
-    for j,lbl in enumerate(["Dates","Time","Height","Time","Height","Time","Height","Time","Height"]):
-        c=r1.cells[j]; sbg(c,"BDD7EE"); sbo(c)
-        cp(c,lbl,sz=9,bold=True,color=RGBColor(0x1F,0x4E,0x79))
+    for j,lbl in enumerate(["","Time","Height","Time","Height","Time","Height","Time","Height"]):
+        c=r1.cells[j]; sbg(c,"FFFFFF"); sbo(c)
+        cp(c,lbl,sz=9,bold=True,color=RGBColor(0,0,0))
 
     # Données : remplies automatiquement si WorldTides disponible, sinon vides
-    DAY_BGS = ["DBE5F1","D8E4BC","FFF2CC","F2DCDB"]
+    DAY_BGS = ["E2EFDA","FFFFFF","E2EFDA","FFFFFF"]
     for i in range(n_data):
         row=tide.rows[2+i]; bg=DAY_BGS[i%4]
         if i < len(tide_rows):
@@ -630,23 +833,90 @@ def generate_word_bulletin(df, run_datetime, warning_text=None, output_path=None
         for j,v in enumerate(vals):
             c=row.cells[j]; sbg(c,bg); sbo(c); cp(c,str(v),sz=9)
 
-    # ── Page portrait : Figure 2 ENSgram ─────────────────────────────────
+    # ── Page portrait : Figure 2 ENSgram + commentaire côte à côte ──────────
     sec_port(doc)
     print("  🌐 Téléchargement Figure 2 (ENSgram ECMWF)...")
-    ecmwf_urls = build_ecmwf_urls(run_datetime)
+    ecmwf_urls  = build_ecmwf_urls(run_datetime)
     img_ensgram = fetch_ecmwf_image(ecmwf_urls["ensgram"], "ENSgram")
 
-    if img_ensgram:
-        pe=doc.add_paragraph(); pe.alignment=WD_ALIGN_PARAGRAPH.CENTER
-        pe.paragraph_format.space_before=Pt(4); pe.paragraph_format.space_after=Pt(2)
-        pe.add_run().add_picture(img_ensgram, width=Cm(17))
-    else:
-        izone(doc,"[ ENSgram ECMWF — image non disponible (vérifier connexion) ]",hcm=8)
+    # Tableau 2 colonnes : image gauche (12cm) | commentaire droite (5.5cm)
+    tbl2 = doc.add_table(rows=1, cols=2)
+    tbl2.style = 'Table Grid'
+    tbl2.alignment = WD_TABLE_ALIGNMENT.CENTER
+    cell_img  = tbl2.rows[0].cells[0]
+    cell_com  = tbl2.rows[0].cells[1]
 
-    pf2=doc.add_paragraph(); pf2.alignment=WD_ALIGN_PARAGRAPH.CENTER; pf2.paragraph_format.space_before=Pt(2); pf2.paragraph_format.space_after=Pt(4)
-    ar(pf2,f"Figure 2: Wave ensemblegram issued by ECMWF from {ordinal(dt_start.day)} to {ordinal(dt_end.day)} {ENG_MF[dt_start.month]} {dt_start.year}",sz=12,bold=True)
-    pc2=doc.add_paragraph(); ar(pc2,"❖  Significant wave heights are forecast to...",sz=12,bold=True)
-    tzone(doc,"[ Commentary on ENSgram — enter text here ]",sz=9)
+    # Supprimer bordures visibles
+    for c in [cell_img, cell_com]:
+        snb(c)
+
+    # ── Colonne gauche : ENSgram ──
+    cell_img.vertical_alignment = WD_ALIGN_VERTICAL.TOP
+    if cell_img.paragraphs:
+        cell_img.paragraphs[0]._p.getparent().remove(cell_img.paragraphs[0]._p)
+
+    if img_ensgram:
+        pi2 = cell_img.add_paragraph()
+        pi2.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        pi2.paragraph_format.space_before = Pt(2)
+        pi2.paragraph_format.space_after  = Pt(2)
+        pi2.add_run().add_picture(img_ensgram, width=Cm(11.5))
+    else:
+        pi2 = cell_img.add_paragraph()
+        pi2.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        r_ph = pi2.add_run("[ ENSgram — non disponible ]")
+        r_ph.font.size = Pt(9); r_ph.font.italic = True; r_ph.font.color.rgb = RGBColor(0xAA,0xAA,0xAA)
+
+    # Légende sous l'image
+    pleg = cell_img.add_paragraph()
+    pleg.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    pleg.paragraph_format.space_before = Pt(2)
+    r_leg = pleg.add_run(f"Figure 2: Wave ensemblegram issued by ECMWF from {ordinal(dt_start.day)} to {ordinal(dt_end.day)} {ENG_MF[dt_start.month]} {dt_start.year}")
+    r_leg.font.size = Pt(9); r_leg.font.bold = True
+
+    # ── Colonne droite : commentaire automatique tendance SWH ──
+    cell_com.vertical_alignment = WD_ALIGN_VERTICAL.TOP
+    if cell_com.paragraphs:
+        cell_com.paragraphs[0]._p.getparent().remove(cell_com.paragraphs[0]._p)
+
+    # Calcul automatique tendance SWH
+    swh_vals   = df_sorted["swh_m"].dropna()
+    swh_max    = swh_vals.max()
+    swh_min    = swh_vals.min()
+    idx_max    = swh_vals.idxmax()
+    peak_dt    = pd.to_datetime(df_sorted.loc[idx_max, "valid_local"])
+    n          = len(swh_vals)
+    first_half = swh_vals.iloc[:n//2].mean()
+    second_half= swh_vals.iloc[n//2:].mean()
+    if second_half > first_half + 0.1:
+        trend_word = "increasing"
+        trend_arrow = "↗"
+    elif second_half < first_half - 0.1:
+        trend_word = "decreasing"
+        trend_arrow = "↘"
+    else:
+        trend_word = "steady"
+        trend_arrow = "→"
+
+    ensgram_comment = (
+        f"SWH {trend_arrow} {trend_word}. "
+        f"Peak: {swh_max:.1f} m ({peak_dt.strftime('%a %d %b, %HZ')}). "
+        f"Min: {swh_min:.1f} m."
+    )
+
+    # Titre petit box
+    pt_com = cell_com.add_paragraph()
+    pt_com.paragraph_format.space_before = Pt(4)
+    pt_com.paragraph_format.space_after  = Pt(3)
+    r_tc = pt_com.add_run("❖  ENSgram summary:")
+    r_tc.font.size = Pt(9); r_tc.font.bold = True
+
+    # Box coloré selon tendance
+    pc_com = cell_com.add_paragraph()
+    pc_com.paragraph_format.space_before = Pt(2)
+    pc_com.paragraph_format.space_after  = Pt(2)
+    r_com  = pc_com.add_run(ensgram_comment)
+    r_com.font.size = Pt(10); r_com.font.bold = True
 
     # ── Page portrait : Figure 3 (4 cartes ECMWF) ────────────────────────
     sec_port(doc)
@@ -680,7 +950,6 @@ def generate_word_bulletin(df, run_datetime, warning_text=None, output_path=None
         r_sub = pt_sub.add_run(FIG3_LABELS[idx])
         r_sub.font.size  = Pt(7)
         r_sub.font.bold  = True
-        r_sub.font.color.rgb = RGBColor(0x1F,0x4E,0x79)
 
         # Image ou placeholder
         pi = cell.add_paragraph()

@@ -10,10 +10,78 @@ import shutil
 import argparse
 import pandas as pd
 import config
-import exporter
 import word_exporter
-from run_pipeline import generate_warning
 from datetime import datetime
+
+# =============================================================================
+# Génération automatique du texte Warning
+# =============================================================================
+
+ENG_MONTHS_FULL = {
+    1:"January",2:"February",3:"March",4:"April",5:"May",6:"June",
+    7:"July",8:"August",9:"September",10:"October",11:"November",12:"December"
+}
+ENG_DAYS_FULL = {
+    0:"Monday",1:"Tuesday",2:"Wednesday",3:"Thursday",
+    4:"Friday",5:"Saturday",6:"Sunday"
+}
+
+def ordinal(n):
+    if 11 <= n <= 13: return f"{n}th"
+    return {1:"st",2:"nd",3:"rd"}.get(n % 10,"th")
+
+def generate_warning(df: pd.DataFrame, run_dt: datetime) -> str:
+    df = df.copy()
+    df["valid_local"] = pd.to_datetime(df["valid_local"])
+    swh_vals = df["swh_m"].dropna()
+    swh_max  = swh_vals.max()
+    idx_max  = swh_vals.idxmax()
+    swh_peak_time = df.loc[idx_max, "valid_local"]
+    wind_vals = df["wind10_spd_kt"].dropna()
+    wind_max  = wind_vals.max()
+    idx_wind  = wind_vals.idxmax()
+    wind_peak_time = df.loc[idx_wind, "valid_local"]
+    wind_dir_peak  = df.loc[idx_wind, "wind10_dir"] if "wind10_dir" in df.columns else "—"
+    gust_vals = df["wind10_gust_kt"].dropna()
+    gust_max  = gust_vals.max() if not gust_vals.empty else None
+    n = len(swh_vals)
+    first_half  = swh_vals.iloc[:n//2].mean()
+    second_half = swh_vals.iloc[n//2:].mean()
+    if second_half > first_half + 0.2:   trend = "gradually increasing"
+    elif second_half < first_half - 0.2: trend = "gradually decreasing"
+    else:                                trend = "relatively stable"
+
+    def fmt_time(dt):
+        day  = ENG_DAYS_FULL[dt.weekday()]
+        date = f"{dt.day}{ordinal(dt.day)}"
+        mon  = ENG_MONTHS_FULL[dt.month]
+        hour = dt.strftime("%I:%M %p").lstrip("0")
+        return f"{day}, {date} {mon} at {hour}"
+
+    if swh_max < config.ALERT_SWH_DANGER and wind_max < config.ALERT_WIND_WARNING:
+        text = (f"Warning: None. Significant wave heights are expected to remain "
+                f"below {config.ALERT_SWH_DANGER:.1f} m throughout the forecast period, "
+                f"peaking at {swh_max:.1f} m. "
+                f"Wind speeds will remain below {config.ALERT_WIND_WARNING} knots.")
+    elif swh_max >= config.ALERT_SWH_WARNING and swh_max < config.ALERT_SWH_DANGER:
+        text = (f"Warning: None. Significant wave heights are expected to be {trend}, "
+                f"peaking at {swh_max:.1f} m around "
+                f"{fmt_time(swh_peak_time)} (local time). "
+                f"Mariners are advised to exercise caution.")
+    elif swh_max >= config.ALERT_SWH_DANGER:
+        text = (f"Warning: Significant wave heights are expected to increase "
+                f"{trend}, reaching a peak of {swh_max:.1f} meters around "
+                f"{fmt_time(swh_peak_time)} (local time).")
+    else:
+        text = (f"Warning: Wind speeds are expected to reach {wind_max:.0f} knots "
+                f"from {wind_dir_peak} around {fmt_time(wind_peak_time)} (local time).")
+
+    if swh_max >= config.ALERT_SWH_DANGER and wind_max >= config.ALERT_WIND_WARNING:
+        gust_txt = f" with gusts up to {gust_max:.0f} knots" if gust_max else ""
+        text += (f" Wind speeds are also expected to reach {wind_max:.0f} knots{gust_txt} "
+                 f"from {wind_dir_peak}.")
+    return text
+
 
 # Table de conversion direction cardinale → degrés
 CARDINAL_TO_DEG = {
@@ -77,19 +145,18 @@ def resolve_run_dt(args, name=None):
 
 
 def export_all(df, run_dt, folder):
-    """Génère Warning + Excel + Word + CSV bulletin."""
-    print("\n[1/4] Warning...")
+    """Génère Warning + Word + CSV bulletin."""
+    print("\n[1/3] Warning...")
     warning_text = generate_warning(df, run_dt)
     print(f"  {warning_text[:100]}...")
 
-    print("\n[2/4] Export Excel...")
-    exporter.export_excel(df, run_dt, config.OUTPUT_FILE, warning_text=warning_text)
-
-    print("\n[3/4] Export Word...")
-    word_path = config.OUTPUT_FILE.replace(".xlsx", ".docx")
+    print("\n[2/3] Export Word...")
+    date_str = run_dt.strftime("%d%m%Y")
+    run_str  = f"{run_dt.hour:02d}Z"
+    word_path = os.path.join(folder, f"Marine_forecast_{date_str}_{run_str}.docx")
     word_exporter.generate_word_bulletin(df, run_dt, warning_text, word_path)
 
-    print("\n[4/4] Export CSV...")
+    print("\n[3/3] Export CSV...")
     date_str = run_dt.strftime("%d%m%Y")
     run_str  = f"{run_dt.hour:02d}Z"
     csv_out  = os.path.join(folder, f"bulletin_marine_seme_{date_str}_{run_str}.csv")

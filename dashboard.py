@@ -1217,36 +1217,45 @@ def render_main_tabs(df, df_filtered, params):
             try: return dirs[round(float(deg)/22.5) % 16]
             except: return ""
 
-        wv = [v for v in ["wind10_spd_kt","wind10_gust_kt","wind100_spd_kt"] if v in df_filtered.columns]
-        fig_wind = make_timeseries(df_filtered, wv, T("wind_speed_title"))
-        _x_str = df_filtered["valid_local"].dt.strftime("%Y-%m-%d %H:%M:%S").tolist()
-        if "wind10_dir" in df_filtered.columns and "wind10_spd_kt" in df_filtered.columns:
-            _c10 = [deg_to_card(d) for d in df_filtered["wind10_dir"].tolist()]
-            _y10 = df_filtered["wind10_spd_kt"].tolist()
-            for idx,(_x,_y,_c) in enumerate(zip(_x_str,_y10,_c10)):
-                if idx%2==0 and _c and pd.notna(_y):
-                    fig_wind.add_annotation(x=_x, y=_y, text=f"<b>{_c}</b>",
-                        showarrow=False, font=dict(size=8,color="#a9e34b"), yshift=12, row=1, col=1)
-        if "wind100_dir" in df_filtered.columns and "wind100_spd_kt" in df_filtered.columns:
-            _wv = [v for v in ["wind10_spd_kt","wind10_gust_kt","wind100_spd_kt"] if v in df_filtered.columns]
-            _r100 = _wv.index("wind100_spd_kt")+1 if "wind100_spd_kt" in _wv else 3
-            _c100 = [deg_to_card(d) for d in df_filtered["wind100_dir"].tolist()]
-            _y100 = df_filtered["wind100_spd_kt"].tolist()
-            for idx,(_x,_y,_c) in enumerate(zip(_x_str,_y100,_c100)):
-                if idx%2==0 and _c and pd.notna(_y):
-                    fig_wind.add_annotation(x=_x, y=_y, text=f"<b>{_c}</b>",
-                        showarrow=False, font=dict(size=8,color="#40c057"), yshift=12, row=_r100, col=1)
-        st.plotly_chart(fig_wind, width='stretch')
-
         lang_vv = st.session_state.get("lang","FR")
         title_100m = "Rose des Vents 100m" if lang_vv=="FR" else "Wind Rose 100m"
-        c_r1,c_r2 = st.columns(2)
-        with c_r1:
+        _x_str = df_filtered["valid_local"].dt.strftime("%Y-%m-%d %H:%M:%S").tolist()
+
+        # ── Vent 10m : graphique (70%) + rose (30%) côte à côte ──────────
+        cw1, cr1 = st.columns([3, 1])
+        with cw1:
+            fig_10m = make_timeseries(df_filtered,
+                [v for v in ["wind10_spd_kt","wind10_gust_kt"] if v in df_filtered.columns],
+                "Vent 10m" if lang_vv=="FR" else "Wind 10m")
+            if "wind10_dir" in df_filtered.columns and "wind10_spd_kt" in df_filtered.columns:
+                _c10 = [deg_to_card(d) for d in df_filtered["wind10_dir"].tolist()]
+                _y10 = df_filtered["wind10_spd_kt"].tolist()
+                for idx,(_x,_y,_c) in enumerate(zip(_x_str,_y10,_c10)):
+                    if idx%2==0 and _c and pd.notna(_y):
+                        fig_10m.add_annotation(x=_x, y=_y, text=f"<b>{_c}</b>",
+                            showarrow=False, font=dict(size=8,color="#a9e34b"), yshift=12, row=1, col=1)
+            st.plotly_chart(fig_10m, width='stretch', key="wind10_chart")
+        with cr1:
             st.plotly_chart(make_wind_rose(df_filtered, dir_col="wind10_dir",
                 spd_col="wind10_spd_kt", title=T("wind_rose_title")),
                 width='stretch', key="wind_rose_10m")
-        with c_r2:
-            if "wind100_dir" in df_filtered.columns and "wind100_spd_kt" in df_filtered.columns:
+
+        # ── Vent 100m : graphique (70%) + rose (30%) côte à côte ─────────
+        if "wind100_spd_kt" in df_filtered.columns:
+            cw2, cr2 = st.columns([3, 1])
+            with cw2:
+                fig_100m = make_timeseries(df_filtered,
+                    [v for v in ["wind100_spd_kt"] if v in df_filtered.columns],
+                    "Vent 100m" if lang_vv=="FR" else "Wind 100m")
+                if "wind100_dir" in df_filtered.columns:
+                    _c100 = [deg_to_card(d) for d in df_filtered["wind100_dir"].tolist()]
+                    _y100 = df_filtered["wind100_spd_kt"].tolist()
+                    for idx,(_x,_y,_c) in enumerate(zip(_x_str,_y100,_c100)):
+                        if idx%2==0 and _c and pd.notna(_y):
+                            fig_100m.add_annotation(x=_x, y=_y, text=f"<b>{_c}</b>",
+                                showarrow=False, font=dict(size=8,color="#40c057"), yshift=12, row=1, col=1)
+                st.plotly_chart(fig_100m, width='stretch', key="wind100_chart")
+            with cr2:
                 st.plotly_chart(make_wind_rose(df_filtered, dir_col="wind100_dir",
                     spd_col="wind100_spd_kt", title=title_100m),
                     width='stretch', key="wind_rose_100m")

@@ -929,6 +929,30 @@ def render_sidebar():
             st.markdown(f"**📍 Point :** {pt_label}")
 
         st.divider()
+
+        # ── Contenu sidebar selon le point actif ──────────────
+        _active_point = st.session_state.get("point", "seme")
+
+        if _active_point == "terminal":
+            # Sidebar Bénin Terminal — géré dans render_benin_terminal()
+            # Ici on n'affiche rien de spécifique à Sème
+            run_date, run_hour, swh_source = None, 0, "ecmwf"
+            selected_vars = []
+            time_start = datetime.now()
+            time_end   = datetime.now()
+            show_markers = True
+            show_thresholds = True
+            chart_type = "lines"
+            return {
+                "run_date": run_date, "run_hour": run_hour,
+                "swh_source": swh_source, "selected_vars": selected_vars,
+                "time_start": time_start, "time_end": time_end,
+                "show_markers": show_markers,
+                "show_thresholds": show_thresholds,
+                "chart_type": chart_type,
+            }
+
+        # ── Sidebar Sème/WAPCO uniquement ─────────────────────
         st.markdown(f"## {T('settings')}")
 
         # Source de données
@@ -1779,25 +1803,46 @@ def render_benin_terminal():
         )
         st.plotly_chart(fig_meteo, use_container_width=True)
 
-        # ── Visibilité ────────────────────────────────────────────────────
+        # ── Pluie + Visibilité combinées ─────────────────────────────────
         if "Visibilite_km" in df_f.columns:
-            fig_v = go.Figure()
-            fig_v.add_trace(go.Scatter(
-                x=x, y=df_f["Visibilite_km"], name="Visibilité",
-                line=dict(color="#A9CCE3", width=2),
-                mode="lines+markers", marker=dict(size=5),
-                fill="tozeroy", fillcolor="rgba(169,204,227,0.12)",
-            ))
-            fig_v.update_layout(
-                title=dict(text="👁️ Visibilité minimale (km)", font=dict(size=12,color="white")),
+            fig_pv = make_subplots(specs=[[{"secondary_y": True}]])
+
+            # Barres pluie (axe gauche)
+            fig_pv.add_trace(go.Bar(
+                x=x, y=df_f[pluie_col],
+                name="Pluie (%)",
+                marker_color="rgba(100,181,246,0.6)",
+                marker_line_width=0,
+            ), secondary_y=False)
+
+            # Courbe visibilité (axe droit)
+            fig_pv.add_trace(go.Scatter(
+                x=x, y=df_f["Visibilite_km"],
+                name="Visibilité (km)",
+                line=dict(color="#A9CCE3", width=2.5),
+                mode="lines+markers", marker=dict(size=6),
+            ), secondary_y=True)
+
+            fig_pv.update_layout(
+                title=dict(text="🌧️ Probabilité de pluie & 👁️ Visibilité minimale",
+                           font=dict(size=12, color="white")),
                 paper_bgcolor="#0E1117", plot_bgcolor="#161B2E",
-                font=dict(color="white",size=9), height=220,
-                margin=dict(l=55,r=30,t=40,b=60),
-                yaxis=dict(title="km", gridcolor="#2a2a3a"),
+                font=dict(color="white", size=9), height=260,
+                margin=dict(l=55, r=65, t=45, b=65),
+                legend=dict(orientation="h", y=-0.28, font=dict(size=9)),
                 xaxis=dict(gridcolor="#2a2a3a", tickangle=-45, tickfont=dict(size=8)),
-                hovermode="x unified",
+                hovermode="x unified", bargap=0.15,
             )
-            st.plotly_chart(fig_v, use_container_width=True)
+            fig_pv.update_yaxes(
+                title_text="Pluie (%)", secondary_y=False,
+                gridcolor="#2a2a3a", color="#64B5F6",
+                range=[0, (df_f[pluie_col].max() or 100) * 1.3],
+            )
+            fig_pv.update_yaxes(
+                title_text="Visibilité (km)", secondary_y=True,
+                color="#A9CCE3", gridcolor="rgba(0,0,0,0)",
+            )
+            st.plotly_chart(fig_pv, use_container_width=True)
 
     # ── Onglet Vent ──────────────────────────────────────────────────────────
     with tab2:

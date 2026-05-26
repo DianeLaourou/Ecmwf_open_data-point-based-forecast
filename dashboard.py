@@ -1040,22 +1040,70 @@ def render_sidebar():
 
         st.divider()
 
-        # ── Upload Word corrigé ────────────────────────────────
-        st.markdown(T("word_upload_title"))
-        st.caption(T("word_upload_help"))
-        uploaded_word = st.file_uploader(
-            T("word_upload_label"),
-            type=["docx"],
-            key="word_uploader",
+        # ── Upload CSV Sème (admin uniquement) ────────────────
+        if st.session_state.get("user_role") == "admin":
+            st.markdown("**📂 Bulletin CSV Sème**")
+            seme_csv = st.file_uploader("Charger CSV Sème", type=["csv"], key="seme_csv_uploader")
+            if seme_csv:
+                import io as _io2
+                df_up = pd.read_csv(seme_csv)
+                df_up["valid_local"] = pd.to_datetime(df_up["valid_local"])
+                st.session_state["df_session"] = df_up
+                st.session_state["is_github"]  = False
+                # Nom fichier pour export
+                first_dt = df_up["valid_local"].min()
+                fname_seme = f"bulletin_marine_seme_{first_dt.strftime('%d%m%Y_%HZ')}.csv"
+                st.session_state["seme_csv_fname"] = fname_seme
+                st.success(f"✅ {len(df_up)} échéances chargées")
+
+            # Bouton export CSV corrigé (après correction Word)
+            if st.session_state.get("df_session") is not None:
+                df_exp = st.session_state["df_session"].copy()
+                df_exp["valid_local"] = df_exp["valid_local"].dt.strftime("%Y-%m-%d %H:%M")
+                fname_exp = st.session_state.get("seme_csv_fname", "bulletin_marine_seme.csv")
+                st.download_button(
+                    "⬇️ CSV Sème corrigé (à publier)",
+                    data=df_exp.to_csv(index=False).encode("utf-8"),
+                    file_name=fname_exp,
+                    mime="text/csv",
+                    type="primary",
+                    key="seme_export_btn",
+                )
+                st.caption("📌 Publier dans `data/seme/` sur GitHub")
+
+        st.divider()
+
+        # ── Upload PDF corrigé Sème ───────────────────────────
+        st.markdown("**📄 Bulletin PDF corrigé**")
+        st.caption("Vis, T°C, Weather, Pluie, SST, Confidence seront mis à jour")
+        uploaded_pdf = st.file_uploader(
+            "Charger le bulletin PDF corrigé",
+            type=["pdf"],
+            key="seme_pdf_uploader",
         )
-        if uploaded_word is not None:
-            st.session_state["word_bytes"] = uploaded_word.read()
-            st.session_state["word_name"]  = uploaded_word.name
-        if st.session_state.get("word_bytes"):
-            if st.button(T("word_reset"), width='stretch'):
-                st.session_state.pop("word_bytes", None)
-                st.session_state.pop("word_name",  None)
-                st.rerun()
+        if uploaded_pdf is not None:
+            pdf_bytes = uploaded_pdf.read()
+            df_corr, err = read_seme_pdf_corrections(pdf_bytes)
+            if err:
+                st.warning(f"⚠️ PDF : {err}")
+            elif df_corr is not None and st.session_state.get("df_session") is not None:
+                df_base = st.session_state["df_session"].copy()
+                n_corr = 0
+                for _, cr in df_corr.iterrows():
+                    h_str = str(cr.get("heure","")).strip()
+                    mask  = df_base["valid_local"].dt.strftime("%H:%M") == h_str
+                    if mask.any():
+                        for col, key in [("t2m_c","T(°C)"),("rain_pct","Rain(%)"),
+                                         ("vis_km","Vis(km)"),("sst_c","SST(°C)"),
+                                         ("weather_condition","Weather"),
+                                         ("confidence","Confidence")]:
+                            if key in cr and cr[key] is not None:
+                                df_base.loc[mask, col] = cr[key]
+                        n_corr += 1
+                st.session_state["df_session"] = df_base
+                st.success(f"✅ {n_corr} échéances corrigées")
+            elif st.session_state.get("df_session") is None:
+                st.warning("⚠️ Chargez d'abord le CSV Sème")
 
         st.divider()
 
@@ -1698,6 +1746,79 @@ BT_WX_ICONS = {
 }
 
 BT_WX_LIST = list(BT_WX_ICONS.keys())
+
+
+def read_seme_pdf_corrections(pdf_bytes):
+    """
+    Lit le PDF bulletin Seme et extrait les corrections :
+    Heure, Vis(km), T(C), Weather condition, Rain(%), SST(C), Confidence
+    Structure PDF : 22 colonnes
+    col 0=Heure, col 6=MSLP, col 7=Vis, col 8=T, col 9=Weather, col 10=Rain, col 11=SST, col 21=Confidence
+    """
+    import pdfplumber, io, re
+
+    WX_MAP = {
+        "sunny":            "Sunny",
+        "mostly sunny":     "Mostly sunny",
+        "partly cloudy":    "Partly cloudy",
+        "mostly cloudy":    "Mostly cloudy",
+        "cloudy":           "Cloudy",
+        "overcast":         "Overcast",
+        "light rain":       "Light rain",
+        "moderate rain":    "Moderate rain",
+        "heavy rain":       "Heavy rain",
+        "rain showers":     "Rain showers",
+        "thunderstorm":     "Thunderstorm",
+        "squally":          "Squally",
+        "mist":             "Mist",
+        "fog":              "Fog",
+        "haze":             "Haze",
+    }
+
+    def map_wx(text):
+        t = str(text or "").lower().strip()
+        for key, val in WX_MAP.items():
+            if key in t:
+                return val
+        return text if text else None
+
+    def safe_float(v):
+        try:
+            return float(str(v or "").strip())
+        except:
+            return None
+
+    rows = []
+    try:
+        with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
+            for page in pdf.pages:
+                for table in page.extract_tables():
+                    for row in table:
+                        if not row or len(row) < 10:
+                            continue
+                        heure = str(row[0] or "").strip()
+                        if not re.match("[0-9]{2}:[0-9]{2}", heure):
+                            continue
+                        vis   = safe_float(row[7])
+                        t_val = safe_float(row[8])
+                        wx    = map_wx(row[9])
+                        rain  = safe_float(row[10])
+                        sst   = safe_float(row[11])
+                        conf  = str(row[21] or "").strip() or None
+                        rows.append({
+                            "heure":      heure,
+                            "Vis(km)":    vis   if vis  and 1<=vis<=50   else None,
+                            "T(°C)":      t_val if t_val and 15<=t_val<=45 else None,
+                            "Weather":    wx,
+                            "Rain(%)":    rain  if rain and 0<=rain<=100 else None,
+                            "SST(°C)":   sst   if sst  and 15<=sst<=40  else None,
+                            "Confidence": conf,
+                        })
+        if not rows:
+            return None, "Aucune ligne extraite du PDF"
+        return pd.DataFrame(rows), None
+    except Exception as e:
+        return None, str(e)
 
 
 def check_bt_alerte():

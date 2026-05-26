@@ -735,12 +735,18 @@ def make_timeseries(df, selected_vars, title=""):
         unit  = meta.get("unit","")
         short = meta.get(lang,{}).get("short", var)
         r,g,b = int(color[1:3],16),int(color[3:5],16),int(color[5:7],16)
+        # Format hover : 1 décimale pour SWH/Houle/Courants/SST/T, 0 pour le reste
+        _decimal_vars = ["swh_m","sw1_ht_m","sw2_ht_m","cur_spd_ms",
+                         "sw1_period_s","sw2_period_s","sst_c","t2m_c"]
+        _fmt = ".1f" if var in _decimal_vars else ".0f"
+        _hover = f"<b>{short}</b>: %{{y:{_fmt}}} {unit}<extra></extra>"
+
         chart_t = st.session_state.get("chart_type_val", "lines")
         if chart_t == "bars":
             fig.add_trace(go.Bar(
                 x=x_vals, y=df[var], name=short,
                 marker_color=f"rgba({r},{g},{b},0.8)",
-                hovertemplate=f"<b>{short}</b>: %{{y:.2f}} {unit}<extra></extra>",
+                hovertemplate=_hover,
             ), row=i, col=1)
         else:
             fig.add_trace(go.Scattergl(
@@ -750,7 +756,7 @@ def make_timeseries(df, selected_vars, title=""):
                 line=dict(color=color,width=2), marker=dict(size=4,color=color),
                 fill="tozeroy" if (i==1 or chart_t=="area") else "none",
                 fillcolor=f"rgba({r},{g},{b},0.12)",
-                hovertemplate=f"<b>{short}</b>: %{{y:.2f}} {unit}<extra></extra>",
+                hovertemplate=_hover,
             ), row=i, col=1)
         for th in meta.get("thresholds",[]):
             fig.add_hline(y=th["value"], line_dash=th["dash"], line_color=th["color"], line_width=1.5,
@@ -1547,11 +1553,13 @@ def bt_plot_wind(df, height, v_col, g_col):
     for val, color in [(t["green"],"#2ECC71"),(t["yellow"],"#F1C40F"),(t["orange"],"#E67E22")]:
         fig.add_hline(y=val, line_dash="dot", line_color=color, line_width=1, opacity=0.6)
     fig.add_trace(go.Scatter(x=x, y=df[v_col], name=f"Vent {height}",
-        line=dict(color="#4FC3F7", width=2), mode="lines+markers", marker=dict(size=4)))
+        line=dict(color="#4FC3F7", width=2), mode="lines+markers", marker=dict(size=4),
+        hovertemplate=f"Vent {height}: %{{y:.0f}} km/h<extra></extra>"))
     fig.add_trace(go.Scatter(x=x, y=df[g_col], name=f"Rafales {height}",
         line=dict(color="#FF8A65", width=2, dash="dash"), mode="lines+markers",
         marker=dict(size=4, symbol="triangle-up"),
-        fill="tonexty", fillcolor="rgba(255,138,101,0.08)"))
+        fill="tonexty", fillcolor="rgba(255,138,101,0.08)",
+        hovertemplate=f"Rafales {height}: %{{y:.0f}} km/h<extra></extra>"))
     # Auto-ajustement : marge 20% au-dessus du max des rafales
     y_auto = max(df[g_col].max() * 1.2, 15) if not df[g_col].dropna().empty else 50
     fig.update_layout(

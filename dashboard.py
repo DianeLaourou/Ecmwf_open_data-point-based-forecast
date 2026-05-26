@@ -2006,6 +2006,24 @@ def render_benin_terminal():
                     st.success(f"✅ {n_corr} échéances corrigées depuis PDF")
             elif bt_pdf and "bt_df" not in st.session_state:
                 st.warning("⚠️ Chargez d'abord le CSV avant le PDF")
+
+            # Bouton export CSV corrigé
+            if "bt_df" in st.session_state:
+                df_exp_bt = st.session_state["bt_df"].copy()
+                df_exp_bt["forecast_time_local"] = pd.to_datetime(
+                    df_exp_bt["forecast_time_local"]).dt.strftime("%Y-%m-%d %H:%M")
+                first_dt_bt = pd.to_datetime(
+                    st.session_state["bt_df"]["forecast_time_local"]).min()
+                fname_bt = f"ECMWF_Port_{first_dt_bt.strftime('%d%m%Y_%H00')}.csv"
+                st.download_button(
+                    "⬇️ CSV corrigé (à publier)",
+                    data=df_exp_bt.to_csv(index=False).encode("utf-8"),
+                    file_name=fname_bt,
+                    mime="text/csv",
+                    type="primary",
+                    key="bt_export_btn",
+                )
+                st.caption("📌 Publier dans `data/BeninTerminal/` sur GitHub")
             st.divider()
 
         # Chargement données

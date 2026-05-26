@@ -671,14 +671,21 @@ def get_alert_level(df):
 def clean_df(df: pd.DataFrame) -> pd.DataFrame:
     """
     Force toutes les colonnes numériques en float64 natif numpy.
-    Nécessaire pour pandas 3.x / ArrowDtype sur Streamlit Cloud.
+    Préserve les colonnes texte (weather_condition, confidence, directions).
     """
+    TEXT_COLS = {"valid_local", "weather_condition", "confidence",
+                 "wind10_dir", "wind100_dir", "sw1_dir", "sw2_dir", "cur_dir"}
     df = df.copy()
     for col in df.columns:
         if col == "valid_local":
             df[col] = pd.to_datetime(df[col])
+        elif col in TEXT_COLS:
+            df[col] = df[col].astype(str).replace({"nan":"", "None":""})
         else:
             df[col] = pd.to_numeric(df[col], errors="coerce").astype("float64")
+    # Ajouter weather_condition si absente
+    if "weather_condition" not in df.columns:
+        df["weather_condition"] = ""
     return df
 
 

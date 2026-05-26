@@ -1703,6 +1703,106 @@ BT_WX_ICONS = {
 BT_WX_LIST = list(BT_WX_ICONS.keys())
 
 
+def check_bt_alerte():
+    """
+    Vérifie si un fichier ALERTE_*.pdf existe dans data/BeninTerminal/ sur GitHub.
+    Retourne (pdf_bytes, filename) ou (None, None).
+    """
+    try:
+        import requests
+        url = f"https://api.github.com/repos/{GITHUB_OWNER}/{GITHUB_REPO_BT}/contents/data/BeninTerminal"
+        r = requests.get(url, timeout=10)
+        if r.status_code != 200:
+            return None, None
+        files = [f for f in r.json()
+                 if isinstance(f, dict) and
+                 f.get("name","").startswith("ALERTE_") and
+                 f.get("name","").endswith(".pdf")]
+        if not files:
+            return None, None
+        # Prendre le plus récent
+        files = sorted(files, key=lambda x: x["name"], reverse=True)
+        pdf_url = files[0]["download_url"]
+        fname   = files[0]["name"]
+        pdf_r   = requests.get(pdf_url, timeout=15)
+        return pdf_r.content, fname
+    except Exception:
+        return None, None
+
+
+def parse_alerte_pdf(pdf_bytes):
+    """Extrait les infos cles du PDF alerte Benin Terminal."""
+    import pdfplumber, io, re
+    try:
+        with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
+            full_text = " ".join(p.extract_text() or "" for p in pdf.pages)
+        ft = full_text.lower()
+        if "rouge" in ft:    niveau = "rouge"
+        elif "orange" in ft: niveau = "orange"
+        else:                niveau = "jaune"
+        pat_diff = re.compile("Diffusion\\s*:\\s*([^\\n]+)")
+        diff = pat_diff.search(full_text)
+        diffusion = diff.group(1).strip() if diff else "---"
+        pat_val = re.compile("Validit.{1,10}jusqu.{1,5}(\\w.+?)(?:\\s{2,}|Diffusion)")
+        val = pat_val.search(full_text)
+        validite = val.group(1).strip() if val else "---"
+        pat_texte = re.compile("(Une [^.]+\\.[^.]+\\.)")
+        tm = pat_texte.search(full_text)
+        texte = tm.group(1).strip() if tm else " ".join(full_text.split()[20:60])
+        return {"niveau": niveau, "diffusion": diffusion,
+                "validite": validite, "texte": texte}
+    except Exception as e:
+        return {"niveau": "jaune", "diffusion": "---", "validite": "---", "texte": str(e)}
+
+def render_alerte_banner(alerte_info, pdf_bytes, fname):
+    """Affiche la bannière d'alerte spéciale."""
+    niveau = alerte_info["niveau"]
+    colors = {
+        "jaune":  {"bg":"#3a3000", "border":"#F1C40F", "icon":"🟡", "label":"VIGILANCE JAUNE"},
+        "orange": {"bg":"#3a1a00", "border":"#E67E22", "icon":"🟠", "label":"VIGILANCE ORANGE"},
+        "rouge":  {"bg":"#3a0000", "border":"#E74C3C", "icon":"🔴", "label":"VIGILANCE ROUGE"},
+    }
+    c = colors.get(niveau, colors["jaune"])
+
+    st.markdown(f"""
+    <div style='
+        background:{c["bg"]};
+        border:2px solid {c["border"]};
+        border-radius:12px;
+        padding:1.2rem 1.5rem;
+        margin-bottom:1rem;
+    '>
+        <div style='display:flex;align-items:center;gap:0.8rem;margin-bottom:0.6rem;'>
+            <span style='font-size:1.8rem;'>⚠️</span>
+            <div>
+                <div style='color:{c["border"]};font-weight:bold;font-size:1.1rem;'>
+                    ALERTE SPÉCIALE BÉNIN TERMINAL &nbsp;·&nbsp; {c["icon"]} {c["label"]}
+                </div>
+                <div style='color:#adb5bd;font-size:0.78rem;margin-top:0.2rem;'>
+                    📅 Diffusion : {alerte_info["diffusion"]} &nbsp;|&nbsp;
+                    ⏱️ Validité : {alerte_info["validite"]}
+                </div>
+            </div>
+        </div>
+        <div style='color:#ffffff;font-size:0.95rem;line-height:1.6;
+                    border-top:1px solid rgba(255,255,255,0.1);padding-top:0.8rem;'>
+            {alerte_info["texte"]}
+        </div>
+        <div style='color:#adb5bd;font-size:0.78rem;margin-top:0.8rem;font-style:italic;'>
+            ⚠️ NB : Suivez les mises à jour. &nbsp;·&nbsp; METEO-BENIN / DPROM / SPAM
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # Bouton téléchargement PDF
+    st.download_button(
+        f"📄 Télécharger le bulletin d'alerte complet",
+        data=pdf_bytes,
+        file_name=fname,
+        mime="application/pdf",
+    )
+
+
 def render_benin_terminal():
     """Affichage complet Bénin Terminal — même architecture que Sème."""
     import plotly.graph_objects as go
@@ -1858,10 +1958,16 @@ def render_benin_terminal():
                  (df_bt["forecast_time_local"] <= pd.Timestamp(t_end))].copy()
     if df_f.empty: df_f = df_bt.copy()
 
-    # ── Alerte globale ────────────────────────────────────────────────────────
-    lbl_a, css_a, msg_a = bt_global_alert(df_f)
-    st.markdown(f'''<div class="warning-box {css_a}"><b>{lbl_a}</b> — {msg_a}</div>''',
-                unsafe_allow_html=True)
+    # ── Vérifier alerte spéciale GitHub ──────────────────────────────────────
+    alerte_bytes, alerte_fname = check_bt_alerte()
+    if alerte_bytes:
+        alerte_info = parse_alerte_pdf(alerte_bytes)
+        render_alerte_banner(alerte_info, alerte_bytes, alerte_fname)
+    else:
+        # ── Alerte globale normale ────────────────────────────────────────────
+        lbl_a, css_a, msg_a = bt_global_alert(df_f)
+        st.markdown(f'''<div class="warning-box {css_a}"><b>{lbl_a}</b> — {msg_a}</div>''',
+                    unsafe_allow_html=True)
 
     # ── KPI ───────────────────────────────────────────────────────────────────
     now = now_local()

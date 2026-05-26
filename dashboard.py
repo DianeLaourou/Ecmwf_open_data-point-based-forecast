@@ -2153,8 +2153,9 @@ def render_benin_terminal():
             <div class='kpi-unit'>°C</div>
         </div>""", unsafe_allow_html=True)
     with k6:
-        wx = str(row.get("Temps_sensible","—"))
-        icon = BT_WX_ICONS.get(wx, "🌤️")
+        wx_raw = row.get("Temps_sensible", None)
+        wx = "—" if (wx_raw is None or str(wx_raw).strip() in ["nan","None",""]) else str(wx_raw)
+        icon = BT_WX_ICONS.get(wx, "🌤️") if wx != "—" else "🌤️"
         st.markdown(f"""
         <div class='kpi-card' style='text-align:center;'>
             <div class='kpi-label'>Temps</div>

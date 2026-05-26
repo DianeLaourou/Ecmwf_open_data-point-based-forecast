@@ -1740,15 +1740,15 @@ def parse_alerte_pdf(pdf_bytes):
         if "rouge" in ft:    niveau = "rouge"
         elif "orange" in ft: niveau = "orange"
         else:                niveau = "jaune"
-        pat_diff = re.compile("Diffusion\\s*:\\s*([^\\n]+)")
-        diff = pat_diff.search(full_text)
-        diffusion = diff.group(1).strip() if diff else "---"
-        pat_val = re.compile("Validit.{1,10}jusqu.{1,5}(\\w.+?)(?:\\s{2,}|Diffusion)")
-        val = pat_val.search(full_text)
-        validite = val.group(1).strip() if val else "---"
-        pat_texte = re.compile("(Une [^.]+\\.[^.]+\\.)")
-        tm = pat_texte.search(full_text)
-        texte = tm.group(1).strip() if tm else " ".join(full_text.split()[20:60])
+        # Diffusion
+        m_diff = re.search("Diffusion\s*:\s*([^\n]+)", full_text)
+        diffusion = m_diff.group(1).strip() if m_diff else "---"
+        # Validite — pattern qui fonctionne
+        m_val = re.search("Validit.+?(\w+\s+\d+\s+\w+\s+\d{4}\s+.+?H\d{2})", full_text, re.IGNORECASE)
+        validite = m_val.group(1).strip() if m_val else "---"
+        # Texte principal
+        m_texte = re.search("(Une [^.]+\.[^.]+\.)", full_text)
+        texte = m_texte.group(1).strip() if m_texte else " ".join(full_text.split()[20:60])
         return {"niveau": niveau, "diffusion": diffusion,
                 "validite": validite, "texte": texte}
     except Exception as e:
@@ -1776,7 +1776,7 @@ def render_alerte_banner(alerte_info, pdf_bytes, fname):
             <span style='font-size:1.8rem;'>⚠️</span>
             <div>
                 <div style='color:{c["border"]};font-weight:bold;font-size:1.1rem;'>
-                    ALERTE SPÉCIALE BÉNIN TERMINAL &nbsp;·&nbsp; {c["icon"]} {c["label"]}
+                    ⚓ ALERTE — PORT DE COTONOU &nbsp;·&nbsp; {c["icon"]} {c["label"]}
                 </div>
                 <div style='color:#adb5bd;font-size:0.78rem;margin-top:0.2rem;'>
                     📅 Diffusion : {alerte_info["diffusion"]} &nbsp;|&nbsp;
@@ -2217,7 +2217,7 @@ def render_benin_terminal():
     <div style='text-align:center;color:#4a6480;font-size:0.68rem;margin-top:2rem;
                 padding:1rem 0;border-top:1px solid rgba(46,117,182,0.15);'>
         © 2026 · LAOUROU MAKONDJOU DIANE · Météorologiste & Data Scientist · METEO-BENIN / DPROM / SPAM<br>
-        Source : ECMWF Open Data via Google Earth Engine
+
     </div>""", unsafe_allow_html=True)
 
 

@@ -1449,7 +1449,7 @@ def bt_plot_wind(df, height, v_col, g_col):
     """Graphique vent + rafales avec zones colorées pour Bénin Terminal."""
     import plotly.graph_objects as go
     t = BT_THRESHOLDS[height]
-    x = df["forecast_time_local"].dt.strftime("%d/%m %H:%M")
+    x = df["forecast_time_local"].dt.strftime("%a %d/%m %Hh")
     fig = go.Figure()
     ymax = max(df[g_col].max() * 1.2 if not df[g_col].empty else 50, t["orange"] + 20)
     zones = [
@@ -1712,7 +1712,8 @@ def render_benin_terminal():
 
     # ── Onglet Météo ─────────────────────────────────────────────────────────
     with tab1:
-        x = df_f["forecast_time_local"].dt.strftime("%d/%m %H:%M")
+        # Labels X exacts depuis le CSV
+        x = df_f["forecast_time_local"].dt.strftime("%a %d/%m %Hh")
         pluie_col = "Pluie(%)" if "Pluie(%)" in df_f.columns else "Pluie(mm)"
 
         # ── Graphique combiné : T°C + Pluie + Pictogrammes ───────────────
@@ -1746,7 +1747,7 @@ def render_benin_terminal():
                 # Position Y : au-dessus de la barre (axe secondaire)
                 y_pos = min(pluie_v + p_max * 0.12, p_max * 0.95)
                 fig_meteo.add_annotation(
-                    x=x[i] if isinstance(x, list) else x.iloc[i],
+                    x=x.iloc[i] if hasattr(x, 'iloc') else x[i],
                     y=y_pos,
                     text=icon,
                     showarrow=False,
@@ -1800,34 +1801,28 @@ def render_benin_terminal():
 
     # ── Onglet Vent ──────────────────────────────────────────────────────────
     with tab2:
-        # 4 graphiques vent
-        c1, c2 = st.columns(2)
-        with c1:
-            st.plotly_chart(bt_plot_wind(df_f,"10m","V10m_Km/h","RafaleV10_Km/h"),
-                           use_container_width=True)
-            st.plotly_chart(bt_plot_wind(df_f,"60m","V60m_Km/h","RafaleV60_Km/h"),
-                           use_container_width=True)
-        with c2:
-            st.plotly_chart(bt_plot_wind(df_f,"22m","V22m_Km/h","RafaleV22_Km/h"),
-                           use_container_width=True)
-            st.plotly_chart(bt_plot_wind(df_f,"70m","V70m_Km/h","RafaleV70_Km/h"),
-                           use_container_width=True)
-
-        # 4 roses des vents
-        st.markdown("#### 🌹 Roses des vents")
-        r1, r2, r3, r4 = st.columns(4)
-        with r1:
-            st.plotly_chart(bt_make_wind_rose(df_f,"V10m_Dir","V10m_Km/h","Rose 10m"),
-                           use_container_width=True)
-        with r2:
-            st.plotly_chart(bt_make_wind_rose(df_f,"V22m_Dir","V22m_Km/h","Rose 22m"),
-                           use_container_width=True)
-        with r3:
-            st.plotly_chart(bt_make_wind_rose(df_f,"V60m_Dir","V60m_Km/h","Rose 60m"),
-                           use_container_width=True)
-        with r4:
-            st.plotly_chart(bt_make_wind_rose(df_f,"V70m_Dir","V70m_Km/h","Rose 70m"),
-                           use_container_width=True)
+        # Chaque niveau : graphique (gauche 70%) + rose (droite 30%)
+        levels = [
+            ("10m", "V10m_Dir", "V10m_Km/h", "RafaleV10_Km/h"),
+            ("22m", "V22m_Dir", "V22m_Km/h", "RafaleV22_Km/h"),
+            ("60m", "V60m_Dir", "V60m_Km/h", "RafaleV60_Km/h"),
+            ("70m", "V70m_Dir", "V70m_Km/h", "RafaleV70_Km/h"),
+        ]
+        for height, dir_col, v_col, g_col in levels:
+            col_graph, col_rose = st.columns([3, 1])
+            with col_graph:
+                # Labels X exacts
+                x_w = df_f["forecast_time_local"].dt.strftime("%a %d/%m %Hh")
+                fig_w = bt_plot_wind(df_f, height, v_col, g_col)
+                # Mettre à jour les labels X dans la figure
+                for trace in fig_w.data:
+                    trace.x = list(x_w)
+                st.plotly_chart(fig_w, use_container_width=True)
+            with col_rose:
+                st.plotly_chart(
+                    bt_make_wind_rose(df_f, dir_col, v_col, f"Rose {height}"),
+                    use_container_width=True
+                )
 
         # Légende seuils
         st.markdown("#### 📌 Seuils d'alerte rafales (km/h)")

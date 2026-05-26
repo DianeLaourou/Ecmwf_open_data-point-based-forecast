@@ -1717,8 +1717,10 @@ def read_bt_pdf_corrections(pdf_bytes):
                         if t_val is not None and not (15 <= t_val <= 45):
                             t_val = None
 
-                        # Temps sensible — col 17 + 18 concaténés
-                        wx_raw = (str(row[17] or "") + " " + str(row[18] or "")).strip()
+                        # Temps sensible — col 17 + 18 concaténés (fragmentés par pdfplumber)
+                        c17 = str(row[17] or "").replace("\n"," ").strip()
+                        c18 = str(row[18] or "None" if row[18] else "").replace("\n"," ").strip()
+                        wx_raw = (c17 + " " + c18).strip()
                         wx_val = map_wx(wx_raw)
 
                         # Pluie % — col 20
@@ -1998,8 +2000,8 @@ def render_benin_terminal():
                     df_base = st.session_state["bt_df"].copy()
                     n_corr = 0
                     for _, cr in df_corr.iterrows():
-                        h_str = str(cr["heure_str"]).replace("h","").zfill(2)
-                        mask  = df_base["forecast_time_local"].dt.strftime("%H") == h_str
+                        h_raw = str(cr.get("heure_str","")).strip().lower().replace("h","").zfill(2)
+                        mask  = df_base["forecast_time_local"].dt.strftime("%H") == h_raw
                         if mask.any():
                             if cr["T(°C)"] is not None:
                                 df_base.loc[mask, "T(°C)"] = cr["T(°C)"]

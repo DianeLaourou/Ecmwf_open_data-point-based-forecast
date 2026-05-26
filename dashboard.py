@@ -1713,72 +1713,90 @@ def render_benin_terminal():
     # ── Onglet Météo ─────────────────────────────────────────────────────────
     with tab1:
         x = df_f["forecast_time_local"].dt.strftime("%d/%m %H:%M")
+        pluie_col = "Pluie(%)" if "Pluie(%)" in df_f.columns else "Pluie(mm)"
 
-        # T°C
-        fig_t = go.Figure()
-        fig_t.add_trace(go.Scatter(x=x, y=df_f["T(°C)"], name="T°C",
-            line=dict(color="#FF6B6B",width=2.5), mode="lines+markers", marker=dict(size=5)))
-        fig_t.update_layout(
-            title=dict(text="🌡️ Température (°C)", font=dict(size=12,color="white")),
-            paper_bgcolor="#0E1117", plot_bgcolor="#161B2E",
-            font=dict(color="white",size=9), height=260,
-            margin=dict(l=50,r=30,t=40,b=55),
-            yaxis=dict(title="°C", gridcolor="#2a2a3a"),
-            xaxis=dict(gridcolor="#2a2a3a", tickangle=-45, tickfont=dict(size=7)),
-            hovermode="x unified",
-        )
-        st.plotly_chart(fig_t, use_container_width=True)
+        # ── Graphique combiné : T°C + Pluie + Pictogrammes ───────────────
+        fig_meteo = make_subplots(specs=[[{"secondary_y": True}]])
 
-        # Pluie % + Visibilité
-        c_m1, c_m2 = st.columns(2)
-        with c_m1:
-            fig_p = go.Figure()
-            pluie_col = "Pluie(%)" if "Pluie(%)" in df_f.columns else "Pluie(mm)"
-            fig_p.add_trace(go.Bar(x=x, y=df_f[pluie_col],
-                marker_color="rgba(100,181,246,0.7)", name="Pluie (%)"))
-            fig_p.update_layout(
-                title=dict(text="🌧️ Probabilité de pluie (%)", font=dict(size=12,color="white")),
-                paper_bgcolor="#0E1117", plot_bgcolor="#161B2E",
-                font=dict(color="white",size=9), height=250,
-                margin=dict(l=50,r=30,t=40,b=55),
-                yaxis=dict(title="%", gridcolor="#2a2a3a", range=[0,110]),
-                xaxis=dict(gridcolor="#2a2a3a", tickangle=-45, tickfont=dict(size=7)),
-            )
-            st.plotly_chart(fig_p, use_container_width=True)
-        with c_m2:
-            if "Visibilite_km" in df_f.columns:
-                fig_v = go.Figure()
-                fig_v.add_trace(go.Scatter(x=x, y=df_f["Visibilite_km"], name="Visibilité",
-                    line=dict(color="#A9CCE3",width=2), mode="lines+markers", marker=dict(size=5),
-                    fill="tozeroy", fillcolor="rgba(169,204,227,0.15)"))
-                fig_v.update_layout(
-                    title=dict(text="👁️ Visibilité minimale (km)", font=dict(size=12,color="white")),
-                    paper_bgcolor="#0E1117", plot_bgcolor="#161B2E",
-                    font=dict(color="white",size=9), height=250,
-                    margin=dict(l=50,r=30,t=40,b=55),
-                    yaxis=dict(title="km", gridcolor="#2a2a3a"),
-                    xaxis=dict(gridcolor="#2a2a3a", tickangle=-45, tickfont=dict(size=7)),
-                )
-                st.plotly_chart(fig_v, use_container_width=True)
+        # Barres probabilité de pluie (axe droit)
+        fig_meteo.add_trace(go.Bar(
+            x=x, y=df_f[pluie_col],
+            name="Pluie (%)",
+            marker_color="rgba(100,181,246,0.55)",
+            marker_line_width=0,
+        ), secondary_y=True)
 
-        # Temps sensible — pictogrammes
+        # Courbe température (axe gauche)
+        fig_meteo.add_trace(go.Scatter(
+            x=x, y=df_f["T(°C)"],
+            name="T°C",
+            line=dict(color="#FF6B6B", width=2.5),
+            mode="lines+markers",
+            marker=dict(size=6, color="#FF6B6B"),
+        ), secondary_y=False)
+
+        # Pictogrammes au-dessus des barres
         if "Temps_sensible" in df_f.columns:
-            st.markdown("#### 🌤️ Temps sensible")
-            n_cols = min(len(df_f), 7)
-            cols_wx = st.columns(n_cols)
+            pluie_vals = df_f[pluie_col].fillna(0)
+            p_max = pluie_vals.max() if pluie_vals.max() > 0 else 100
             for i, (_, r) in enumerate(df_f.iterrows()):
-                if i >= n_cols: break
-                wx_val = str(r.get("Temps_sensible","—"))
+                wx_val = str(r.get("Temps_sensible", ""))
                 icon   = BT_WX_ICONS.get(wx_val, "🌤️")
-                heure  = pd.to_datetime(r["forecast_time_local"]).strftime("%d/%m\n%Hh")
-                with cols_wx[i]:
-                    st.markdown(f"""
-                    <div style='text-align:center;background:#1E2130;border-radius:8px;
-                                padding:8px 4px;margin:2px;'>
-                        <div style='font-size:1.6rem;'>{icon}</div>
-                        <div style='font-size:0.6rem;color:#adb5bd;white-space:pre-line;'>{heure}</div>
-                        <div style='font-size:0.55rem;color:#7fb3d3;'>{wx_val[:12]}</div>
-                    </div>""", unsafe_allow_html=True)
+                pluie_v = float(r.get(pluie_col, 0) or 0)
+                # Position Y : au-dessus de la barre (axe secondaire)
+                y_pos = min(pluie_v + p_max * 0.12, p_max * 0.95)
+                fig_meteo.add_annotation(
+                    x=x[i] if isinstance(x, list) else x.iloc[i],
+                    y=y_pos,
+                    text=icon,
+                    showarrow=False,
+                    font=dict(size=16),
+                    yref="y2",
+                    xref="x",
+                    yanchor="bottom",
+                )
+
+        fig_meteo.update_layout(
+            title=dict(text="🌡️ Température · Probabilité de pluie · Temps sensible",
+                       font=dict(size=12, color="white")),
+            paper_bgcolor="#0E1117", plot_bgcolor="#161B2E",
+            font=dict(color="white", size=9), height=360,
+            margin=dict(l=55, r=65, t=50, b=70),
+            legend=dict(orientation="h", y=-0.22, font=dict(size=9)),
+            xaxis=dict(gridcolor="#2a2a3a", tickangle=-45, tickfont=dict(size=8)),
+            hovermode="x unified",
+            bargap=0.15,
+        )
+        fig_meteo.update_yaxes(
+            title_text="T (°C)", gridcolor="#2a2a3a",
+            secondary_y=False, color="#FF6B6B",
+        )
+        fig_meteo.update_yaxes(
+            title_text="Pluie (%)", secondary_y=True,
+            range=[0, (df_f[pluie_col].max() or 100) * 1.4],
+            color="#64B5F6", gridcolor="rgba(0,0,0,0)",
+        )
+        st.plotly_chart(fig_meteo, use_container_width=True)
+
+        # ── Visibilité ────────────────────────────────────────────────────
+        if "Visibilite_km" in df_f.columns:
+            fig_v = go.Figure()
+            fig_v.add_trace(go.Scatter(
+                x=x, y=df_f["Visibilite_km"], name="Visibilité",
+                line=dict(color="#A9CCE3", width=2),
+                mode="lines+markers", marker=dict(size=5),
+                fill="tozeroy", fillcolor="rgba(169,204,227,0.12)",
+            ))
+            fig_v.update_layout(
+                title=dict(text="👁️ Visibilité minimale (km)", font=dict(size=12,color="white")),
+                paper_bgcolor="#0E1117", plot_bgcolor="#161B2E",
+                font=dict(color="white",size=9), height=220,
+                margin=dict(l=55,r=30,t=40,b=60),
+                yaxis=dict(title="km", gridcolor="#2a2a3a"),
+                xaxis=dict(gridcolor="#2a2a3a", tickangle=-45, tickfont=dict(size=8)),
+                hovermode="x unified",
+            )
+            st.plotly_chart(fig_v, use_container_width=True)
 
     # ── Onglet Vent ──────────────────────────────────────────────────────────
     with tab2:

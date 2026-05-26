@@ -1781,6 +1781,32 @@ def render_benin_terminal():
         # Chargement données
         if "bt_df" in st.session_state:
             df_bt = st.session_state["bt_df"]
+        elif user_role == "client":
+            # Client : charger automatiquement le dernier CSV depuis GitHub
+            import requests, io as _io
+            try:
+                tree_url = f"https://api.github.com/repos/{GITHUB_OWNER}/{GITHUB_REPO_BT}/git/trees/main?recursive=1"
+                r = requests.get(tree_url, timeout=10)
+                files = sorted([f["path"] for f in r.json().get("tree",[])
+                                if f["path"].endswith(".csv") and "ECMWF_Port" in f["path"]],
+                               reverse=True)
+                if files:
+                    raw_url = f"https://raw.githubusercontent.com/{GITHUB_OWNER}/{GITHUB_REPO_BT}/main/{files[0]}"
+                    df_gh = pd.read_csv(_io.StringIO(requests.get(raw_url, timeout=15).text))
+                    df_gh["forecast_time_local"] = pd.to_datetime(df_gh["forecast_time_local"])
+                    for col, default in [("T(°C)", 28.0), ("Pluie(%)", 10.0),
+                                         ("Visibilite_km", 9.0), ("Temps_sensible","Assez nuageux")]:
+                        if col not in df_gh.columns:
+                            df_gh[col] = default
+                    st.session_state["bt_df"] = df_gh
+                    df_bt = df_gh
+                    st.sidebar.success(f"✅ {files[0].replace('ECMWF_Port_','').replace('.csv','')}")
+                else:
+                    df_bt = bt_generate_demo()
+                    is_demo = True
+            except Exception as e:
+                df_bt = bt_generate_demo()
+                is_demo = True
         else:
             df_bt = bt_generate_demo()
             is_demo = True
@@ -2037,12 +2063,38 @@ def render_benin_terminal():
     # ── Onglet Export ────────────────────────────────────────────────────────
     with tab4:
         st.markdown("### 💾 Export des données")
+
         exp = df_f.copy()
         exp["forecast_time_local"] = exp["forecast_time_local"].dt.strftime("%Y-%m-%d %H:%M")
         fname = f"BeninTerminal_{now_local().strftime('%d%m%Y_%H%M')}.csv"
+
+        # Téléchargement CSV filtré (tous)
         st.download_button("⬇️ Télécharger CSV filtré",
             data=exp.to_csv(index=False).encode("utf-8"),
             file_name=fname, mime="text/csv")
+
+        # Admin : télécharger CSV corrigé complet pour pousser sur GitHub
+        if user_role == "admin":
+            st.divider()
+            st.markdown("#### 🔑 Publication (Admin)")
+            st.info("""
+            **Workflow de publication :**
+            1. Téléchargez le CSV corrigé ci-dessous
+            2. Renommez-le : `ECMWF_Port_DDMMYYYY_HHMM.csv`
+            3. Poussez sur GitHub `Benin-Terminal-Forecast`
+            4. Le client Bénin Terminal verra les données corrigées automatiquement
+            """)
+            exp_full = df_bt.copy()
+            exp_full["forecast_time_local"] = exp_full["forecast_time_local"].dt.strftime("%Y-%m-%d %H:%M")
+            date_str = now_local().strftime("%d%m%Y_%H%M")
+            fname_corr = f"ECMWF_Port_{date_str}.csv"
+            st.download_button(
+                "⬇️ Télécharger CSV corrigé complet (à publier sur GitHub)",
+                data=exp_full.to_csv(index=False).encode("utf-8"),
+                file_name=fname_corr,
+                mime="text/csv",
+                type="primary",
+            )
 
     # Footer
     st.markdown("""

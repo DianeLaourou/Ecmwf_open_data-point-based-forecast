@@ -1591,55 +1591,68 @@ def render_benin_terminal():
         </div>
     </div>""", unsafe_allow_html=True)
 
-    # ── Chargement CSV ────────────────────────────────────────────────────────
-    is_demo = False
-    bt_file = st.file_uploader("📂 Bulletin CSV Bénin Terminal", type=["csv"], key="bt_uploader")
-    if bt_file:
-        df_bt = pd.read_csv(bt_file)
+    # ── Chargement CSV + Filtre temporel dans la sidebar ────────────────────
+    is_demo   = False
+    user_role = st.session_state.get("user_role", "client")
+
+    with st.sidebar:
+        st.divider()
+        st.markdown("### ⚓ Bénin Terminal")
+
+        # Upload CSV — admin uniquement
+        if user_role == "admin":
+            bt_file = st.file_uploader("📂 Charger bulletin CSV", type=["csv"], key="bt_uploader")
+            if bt_file:
+                df_bt = pd.read_csv(bt_file)
+                df_bt["forecast_time_local"] = pd.to_datetime(df_bt["forecast_time_local"])
+                for col, default in [("T(°C)", 28.0), ("Pluie(%)", 10.0),
+                                     ("Visibilite_km", 9.0), ("Temps_sensible","Assez nuageux")]:
+                    if col not in df_bt.columns:
+                        df_bt[col] = default
+                st.session_state["bt_df"] = df_bt
+                st.success(f"✅ {len(df_bt)} échéances")
+            st.divider()
+
+        # Chargement données
+        if "bt_df" in st.session_state:
+            df_bt = st.session_state["bt_df"]
+        else:
+            df_bt = bt_generate_demo()
+            is_demo = True
+
+        # Filtre temporel
         df_bt["forecast_time_local"] = pd.to_datetime(df_bt["forecast_time_local"])
-        # Ajouter colonnes corrigées si absentes
-        for col, default in [("T(°C)", 28.0), ("Pluie(%)", 10.0),
-                              ("Visibilite_km", 9.0), ("Temps_sensible", "Assez nuageux")]:
-            if col not in df_bt.columns:
-                df_bt[col] = default
-        st.session_state["bt_df"] = df_bt
-        st.success(f"✅ {len(df_bt)} échéances chargées")
-    elif "bt_df" in st.session_state:
-        df_bt = st.session_state["bt_df"]
-    else:
-        df_bt = bt_generate_demo()
-        is_demo = True
-        st.caption("⚠️ Mode démonstration — chargez un bulletin CSV")
+        times  = sorted(df_bt["forecast_time_local"].dt.to_pydatetime().tolist())
+        dt_min = times[0]; dt_max = times[-1]
+        _19h   = dt_min.replace(hour=19, minute=0, second=0, microsecond=0)
+        _19h_times = [t for t in times if t >= _19h]
+        _def_start = _19h_times[0] if _19h_times else dt_min
+
+        st.markdown("#### 🕐 Période")
+        show_past = st.toggle("Voir les échéances passées", value=False, key="bt_show_past")
+        def_start = dt_min if show_past else _def_start
+
+        col_fa, col_fb = st.columns(2)
+        with col_fa:
+            s_d = st.date_input("De", value=def_start.date(),
+                                min_value=dt_min.date(), max_value=dt_max.date(), key="bt_sd")
+            _hs = sorted({t.hour for t in times if t.date()==s_d}) or list(range(0,24,2))
+            _def_sh = def_start.hour if s_d == def_start.date() else _hs[0]
+            _sh_idx = _hs.index(_def_sh) if _def_sh in _hs else 0
+            s_h = st.selectbox("Heure", _hs, format_func=lambda h:f"{h:02d}:00",
+                               index=_sh_idx, key="bt_sh")
+        with col_fb:
+            e_d = st.date_input("À", value=dt_max.date(),
+                                min_value=dt_min.date(), max_value=dt_max.date(), key="bt_ed")
+            _he = sorted({t.hour for t in times if t.date()==e_d}) or list(range(0,24,2))
+            e_h = st.selectbox("Heure", _he, format_func=lambda h:f"{h:02d}:00",
+                               index=len(_he)-1, key="bt_eh")
+
+        if is_demo:
+            st.caption("⚠️ Mode démonstration")
 
     # Badge démo
     demo_badge = " · <span style='color:#ffa94d;font-size:0.7rem;'>DEMO</span>" if is_demo else ""
-
-    # ── Filtre temporel ───────────────────────────────────────────────────────
-    df_bt["forecast_time_local"] = pd.to_datetime(df_bt["forecast_time_local"])
-    times = sorted(df_bt["forecast_time_local"].dt.to_pydatetime().tolist())
-    dt_min = times[0]; dt_max = times[-1]
-    _19h = dt_min.replace(hour=19, minute=0, second=0, microsecond=0)
-    _19h_times = [t for t in times if t >= _19h]
-    _def_start = _19h_times[0] if _19h_times else dt_min
-
-    show_past = st.toggle("🕐 Voir les échéances passées", value=False, key="bt_show_past")
-    def_start = dt_min if show_past else _def_start
-
-    col_fa, col_fb = st.columns(2)
-    with col_fa:
-        s_d = st.date_input("De", value=def_start.date(), min_value=dt_min.date(),
-                            max_value=dt_max.date(), key="bt_sd")
-        _hs = sorted({t.hour for t in times if t.date()==s_d}) or list(range(0,24,2))
-        _def_sh = def_start.hour if s_d == def_start.date() else _hs[0]
-        _sh_idx = _hs.index(_def_sh) if _def_sh in _hs else 0
-        s_h = st.selectbox("Heure", _hs, format_func=lambda h:f"{h:02d}:00",
-                           index=_sh_idx, key="bt_sh")
-    with col_fb:
-        e_d = st.date_input("À", value=dt_max.date(), min_value=dt_min.date(),
-                            max_value=dt_max.date(), key="bt_ed")
-        _he = sorted({t.hour for t in times if t.date()==e_d}) or list(range(0,24,2))
-        e_h = st.selectbox("Heure", _he, format_func=lambda h:f"{h:02d}:00",
-                           index=len(_he)-1, key="bt_eh")
 
     t_start = datetime.combine(s_d, datetime.min.time()).replace(hour=s_h)
     t_end   = datetime.combine(e_d, datetime.min.time()).replace(hour=e_h)

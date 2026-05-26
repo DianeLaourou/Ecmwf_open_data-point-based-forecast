@@ -1161,7 +1161,7 @@ def render_kpi_row(df):
     closest_idx = (df["valid_local"] - now).abs().argsort().iloc[0]
     row = df.iloc[closest_idx]
 
-    cols = st.columns(6)
+    cols = st.columns(7)
     kpis = [
         ("swh_m",         T("kpi_swh"),  "m",   ".1f"),
         ("wind10_spd_kt", T("kpi_wind"), "kt",  ".0f"),
@@ -1184,6 +1184,18 @@ def render_kpi_row(df):
                 <div class="kpi-unit">{unit}</div>
             </div>""", unsafe_allow_html=True)
 
+    # KPI Temps sensible
+    with cols[6]:
+        wx_raw = row.get("weather_condition", None)
+        wx = "—" if (wx_raw is None or str(wx_raw).strip() in ["nan","None",""]) else str(wx_raw)
+        icon = SEME_WX_ICONS.get(wx, "🌤️") if wx != "—" else "🌤️"
+        st.markdown(f"""
+        <div class="kpi-card" style="text-align:center;">
+            <div class="kpi-label">{"Temps" if st.session_state.get("lang","FR")=="FR" else "Weather"}</div>
+            <div class="kpi-value">{icon}</div>
+            <div class="kpi-unit" style="font-size:0.6rem;">{wx if wx != "—" else "—"}</div>
+        </div>""", unsafe_allow_html=True)
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # ONGLETS
@@ -1199,9 +1211,49 @@ def render_main_tabs(df, df_filtered, params):
     with tab_meteo:
         t_from = df_filtered["valid_local"].min().strftime("%d/%m")
         t_to   = df_filtered["valid_local"].max().strftime("%d/%m %H:%M")
-        meteo_default = [v for v in ["mslp_hpa","t2m_c"] if v in df_filtered.columns]
+
+        # ── Graphique T°C + pictogrammes weather condition ────────────────
+        if "t2m_c" in df_filtered.columns:
+            x_t = df_filtered["valid_local"].dt.strftime("%a %d/%m %Hh")
+            t_series = df_filtered["t2m_c"].copy().interpolate(method="linear", limit_direction="both")
+            fig_t2m = go.Figure()
+            fig_t2m.add_trace(go.Scatter(
+                x=x_t, y=t_series, name="T°C",
+                line=dict(color="#FF6B6B", width=2.5),
+                mode="lines+markers", marker=dict(size=6, color="#FF6B6B"),
+                fill="tozeroy", fillcolor="rgba(255,107,107,0.08)",
+                hovertemplate="T°C: %{y:.1f}°C<extra></extra>",
+            ))
+            # Pictogrammes weather_condition
+            if "weather_condition" in df_filtered.columns:
+                for i, (_, r) in enumerate(df_filtered.iterrows()):
+                    wx_val = str(r.get("weather_condition","") or "")
+                    if wx_val in ["nan","None",""]: continue
+                    icon = SEME_WX_ICONS.get(wx_val, "")
+                    if not icon: continue
+                    t_val = float(t_series.iloc[i]) if not pd.isna(t_series.iloc[i]) else None
+                    if t_val is None: continue
+                    fig_t2m.add_annotation(
+                        x=x_t.iloc[i] if hasattr(x_t,"iloc") else x_t[i],
+                        y=t_val, text=icon,
+                        showarrow=False, font=dict(size=16),
+                        yanchor="bottom", yshift=8,
+                    )
+            fig_t2m.update_layout(
+                title=dict(text="🌡️ Température & Temps sensible",
+                           font=dict(size=12, color="white")),
+                paper_bgcolor="#0E1117", plot_bgcolor="#161B2E",
+                font=dict(color="white", size=9), height=320,
+                margin=dict(l=55, r=30, t=50, b=70),
+                yaxis=dict(title="°C", gridcolor="#2a2a3a", color="#FF6B6B"),
+                xaxis=dict(gridcolor="#2a2a3a", tickangle=-45, tickfont=dict(size=8)),
+                hovermode="x unified", showlegend=False,
+            )
+            st.plotly_chart(fig_t2m, use_container_width=True)
+
+        # ── Autres variables météo (MSLP, pluie, visibilité) ─────────────
         _opt_labels = {
-            "sst_c":    "SST (°C)",
+            "mslp_hpa": "MSLP (hPa)",
             "rain_pct": "Précip. (%)" if lang=="FR" else "Rain (%)",
             "vis_km":   "Visibilité (km)" if lang=="FR" else "Visibility (km)",
         }
@@ -1212,9 +1264,8 @@ def render_main_tabs(df, df_filtered, params):
             if var in df_filtered.columns:
                 if _cols[i].checkbox(label, value=False, key=f"meteo_{var}"):
                     meteo_extra.append(var)
-        meteo_vars = meteo_default + meteo_extra
-        if meteo_vars:
-            st.plotly_chart(make_timeseries(df_filtered, meteo_vars,
+        if meteo_extra:
+            st.plotly_chart(make_timeseries(df_filtered, meteo_extra,
                 f"{T('forecast_title')} ({t_from} → {t_to})"), width='stretch')
 
     # ── 💨 VENT ───────────────────────────────────────────────────────────────
@@ -1769,6 +1820,25 @@ def read_bt_pdf_corrections(pdf_bytes):
     except Exception as e:
         return None, str(e)
 
+
+# Pictogrammes météo Sème (EN)
+SEME_WX_ICONS = {
+    "Sunny":            "☀️",
+    "Mostly sunny":     "🌤️",
+    "Partly cloudy":    "⛅",
+    "Mostly cloudy":    "🌥️",
+    "Cloudy":           "☁️",
+    "Overcast":         "☁️",
+    "Light rain":       "🌦️",
+    "Moderate rain":    "🌧️",
+    "Heavy rain":       "🌧️",
+    "Rain showers":     "🌦️",
+    "Thunderstorm":     "⛈️",
+    "Squally":          "🌩️",
+    "Mist":             "🌫️",
+    "Fog":              "🌁",
+    "Haze":             "🌫️",
+}
 
 # Pictogrammes temps sensible Bénin Terminal
 BT_WX_ICONS = {

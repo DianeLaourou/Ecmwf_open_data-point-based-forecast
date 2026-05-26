@@ -1969,19 +1969,19 @@ def render_benin_terminal():
         if "Visibilite_km" in df_f.columns:
             fig_pv = make_subplots(specs=[[{"secondary_y": True}]])
 
-            # Barres pluie (axe gauche)
+            # Barres visibilité (axe gauche)
             fig_pv.add_trace(go.Bar(
-                x=x, y=df_f[pluie_col],
-                name="Pluie (%)",
-                marker_color="rgba(100,181,246,0.6)",
+                x=x, y=df_f["Visibilite_km"],
+                name="Visibilité (km)",
+                marker_color="rgba(169,204,227,0.7)",
                 marker_line_width=0,
             ), secondary_y=False)
 
-            # Courbe visibilité (axe droit)
+            # Courbe probabilité de pluie (axe droit)
             fig_pv.add_trace(go.Scatter(
-                x=x, y=df_f["Visibilite_km"],
-                name="Visibilité (km)",
-                line=dict(color="#A9CCE3", width=2.5),
+                x=x, y=df_f[pluie_col],
+                name="Pluie (%)",
+                line=dict(color="#4FC3F7", width=2.5),
                 mode="lines+markers", marker=dict(size=6),
             ), secondary_y=True)
 
@@ -1996,13 +1996,13 @@ def render_benin_terminal():
                 hovermode="x unified", bargap=0.15,
             )
             fig_pv.update_yaxes(
-                title_text="Pluie (%)", secondary_y=False,
-                gridcolor="#2a2a3a", color="#64B5F6",
-                range=[0, (df_f[pluie_col].max() or 100) * 1.3],
+                title_text="Visibilité (km)", secondary_y=False,
+                gridcolor="#2a2a3a", color="#A9CCE3",
             )
             fig_pv.update_yaxes(
-                title_text="Visibilité (km)", secondary_y=True,
-                color="#A9CCE3", gridcolor="rgba(0,0,0,0)",
+                title_text="Pluie (%)", secondary_y=True,
+                color="#4FC3F7", gridcolor="rgba(0,0,0,0)",
+                range=[0, (df_f[pluie_col].max() or 100) * 1.3],
             )
             st.plotly_chart(fig_pv, use_container_width=True)
 

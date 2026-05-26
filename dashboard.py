@@ -1785,13 +1785,17 @@ def render_benin_terminal():
             # Client : charger automatiquement le dernier CSV depuis GitHub
             import requests, io as _io
             try:
-                tree_url = f"https://api.github.com/repos/{GITHUB_OWNER}/{GITHUB_REPO_BT}/git/trees/main?recursive=1"
+                # Utiliser l'API contents pour avoir les dates de commit
+                tree_url = f"https://api.github.com/repos/{GITHUB_OWNER}/{GITHUB_REPO_BT}/contents/"
                 r = requests.get(tree_url, timeout=10)
-                files = sorted([f["path"] for f in r.json().get("tree",[])
-                                if f["path"].endswith(".csv")],
-                               reverse=True)
+                all_files = [(f["name"], f["download_url"])
+                             for f in r.json()
+                             if isinstance(f, dict) and f.get("name","").endswith(".csv")]
+                # Trier par nom de fichier décroissant (le plus récent en premier)
+                all_files = sorted(all_files, key=lambda x: x[0], reverse=True)
+                files = [f[0] for f in all_files]
                 if files:
-                    raw_url = f"https://raw.githubusercontent.com/{GITHUB_OWNER}/{GITHUB_REPO_BT}/main/{files[0]}"
+                    raw_url = all_files[0][1]  # download_url direct
                     df_gh = pd.read_csv(_io.StringIO(requests.get(raw_url, timeout=15).text))
                     df_gh["forecast_time_local"] = pd.to_datetime(df_gh["forecast_time_local"])
                     for col, default in [("T(°C)", 28.0), ("Pluie(%)", 10.0),

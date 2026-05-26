@@ -95,10 +95,13 @@ def now_local() -> datetime:
     return datetime.now(tz=TZ_BENIN).replace(tzinfo=None)
 
 # ── URL CSV GitHub ────────────────────────────────────────────────────────────
-GITHUB_RAW_URL  = "https://raw.githubusercontent.com/DianeLaourou/Ecmwf_open_data-point-based-forecast/main/"
-GITHUB_TREE_URL = "https://api.github.com/repos/DianeLaourou/Ecmwf_open_data-point-based-forecast/git/trees/main?recursive=0"
+GITHUB_RAW_URL  = "https://raw.githubusercontent.com/DianeLaourou/Ecmwf_open_data-point-based-forecast/main/data/seme/"
+GITHUB_TREE_URL = "https://api.github.com/repos/DianeLaourou/Ecmwf_open_data-point-based-forecast/contents/data/seme"
 GITHUB_OWNER    = "DianeLaourou"
-GITHUB_REPO_BT  = "Benin-Terminal-Forecast"
+GITHUB_REPO     = "Ecmwf_open_data-point-based-forecast"
+GITHUB_REPO_BT  = "Ecmwf_open_data-point-based-forecast"
+GITHUB_FOLDER_SEME     = "data/seme"
+GITHUB_FOLDER_TERMINAL = "data/BeninTerminal"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # CONFIG PAGE
@@ -515,7 +518,7 @@ def load_github_csv():
             tree = json.loads(resp.read().decode("utf-8"))
         csv_files = sorted([
             item["path"] for item in tree.get("tree", [])
-            if item["path"].startswith("bulletin_marine_seme_") and item["path"].endswith(".csv")
+            if item["name"].startswith("bulletin_marine_seme_") and item["name"].endswith(".csv")
         ])
         if not csv_files:
             # Fallback ancien nom
@@ -1463,7 +1466,7 @@ def bt_load_csv():
                  if f["path"].endswith(".csv") and "ECMWF_Port" in f["path"]]
         if not files: return None, []
         files = sorted(files, reverse=True)
-        raw = f"https://raw.githubusercontent.com/{GITHUB_OWNER}/{GITHUB_REPO_BT}/main/{files[0]}"
+        raw = f"https://raw.githubusercontent.com/{GITHUB_OWNER}/{GITHUB_REPO_BT}/main/data/BeninTerminal/{files[0]}"
         df = pd.read_csv(io.StringIO(requests.get(raw, timeout=10).text))
         df["forecast_time_local"] = pd.to_datetime(df["forecast_time_local"])
         return df, files
@@ -1786,7 +1789,7 @@ def render_benin_terminal():
             import requests, io as _io
             try:
                 # Utiliser l'API contents pour avoir les dates de commit
-                tree_url = f"https://api.github.com/repos/{GITHUB_OWNER}/{GITHUB_REPO_BT}/contents/"
+                tree_url = f"https://api.github.com/repos/{GITHUB_OWNER}/{GITHUB_REPO_BT}/contents/{GITHUB_FOLDER_TERMINAL}"
                 r = requests.get(tree_url, timeout=10)
                 all_files = [(f["name"], f["download_url"])
                              for f in r.json()

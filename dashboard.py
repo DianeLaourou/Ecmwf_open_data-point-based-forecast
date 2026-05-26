@@ -514,21 +514,21 @@ def load_github_csv():
     """Cherche le dernier bulletin CSV sur GitHub via git tree API."""
     try:
         import urllib.request, json, io as _io
+        # API contents → retourne une liste directe (pas tree.tree)
         with urllib.request.urlopen(GITHUB_TREE_URL, timeout=15) as resp:
-            tree = json.loads(resp.read().decode("utf-8"))
+            items = json.loads(resp.read().decode("utf-8"))
+        # items est une liste de fichiers
+        if isinstance(items, dict):
+            items = items.get("tree", [])
         csv_files = sorted([
-            item["path"] for item in tree.get("tree", [])
-            if item["name"].startswith("bulletin_marine_seme_") and item["name"].endswith(".csv")
+            item["name"] for item in items
+            if isinstance(item, dict) and
+            item.get("name","").startswith("bulletin_marine_seme_") and
+            item.get("name","").endswith(".csv")
         ])
         if not csv_files:
-            # Fallback ancien nom
-            has_latest = any(item["path"] == "latest_forecast.csv" for item in tree.get("tree", []))
-            if has_latest:
-                latest = "latest_forecast.csv"
-            else:
-                return None, "Aucun CSV trouvé sur GitHub."
-        else:
-            latest = csv_files[-1]
+            return None, "Aucun CSV trouvé dans data/seme/ sur GitHub."
+        latest = csv_files[-1]
         with urllib.request.urlopen(GITHUB_RAW_URL + latest, timeout=15) as resp:
             content = resp.read().decode("utf-8")
         df = pd.read_csv(_io.StringIO(content))

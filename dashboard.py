@@ -141,7 +141,7 @@ TRANSLATIONS = {
         "footer_copy":       "© 2026 LAOUROU M. DIANE",
         "grp_waves":         "🌊 Vagues",
         "grp_wind":          "💨 Vent",
-        "grp_pres":          "🔴 Pression / Temp",
+        "grp_pres":          "🔴 Pression / T°air",
         "grp_other":         "🌫️ Autres",
         "kpi_swh":           "SWH Max",
         "kpi_wind":          "Vent Max",
@@ -239,7 +239,7 @@ TRANSLATIONS = {
         "footer_copy":       "© 2026 LAOUROU M. DIANE",
         "grp_waves":         "🌊 Waves",
         "grp_wind":          "💨 Wind",
-        "grp_pres":          "🔴 Pressure / Temp",
+        "grp_pres":          "🔴 Pressure / T°air",
         "grp_other":         "🌫️ Other",
         "kpi_swh":           "SWH Max",
         "kpi_wind":          "Wind Max",
@@ -333,7 +333,7 @@ BT_THRESHOLDS = {
 
 POINTS = {
     "seme":    {"label": "🌊 Sème",              "lat": 6.22, "lon": 2.63},
-    "terminal":{"label": "⚓ Port de Cotonou",   "lat": 6.35, "lon": 2.43},
+    "terminal":{"label": "⚓ Cotonou",   "lat": 6.35, "lon": 2.43},
 }
 
 VAR_META = {
@@ -375,8 +375,8 @@ VAR_META = {
     "t2m_c":         {"FR": {"label": "Température 2m",  "short":"T 2m","group":"grp_pres"},
                       "EN": {"label": "Temperature 2m",  "short":"T 2m","group":"grp_pres"},
                       "unit":"°C","color":"#ff6b6b","icon":"🌡️","thresholds":[]},
-    "sst_c":         {"FR": {"label": "Température surface mer (SST)","short":"SST","group":"grp_pres"},
-                      "EN": {"label": "Sea surface temperature (SST)","short":"SST","group":"grp_pres"},
+    "sst_c":         {"FR": {"label": "Température surface mer (SST)","short":"SST","group":"grp_waves"},
+                      "EN": {"label": "Sea surface temperature (SST)","short":"SST","group":"grp_waves"},
                       "unit":"°C","color":"#f06595","icon":"🌡️","thresholds":[]},
     "vis_km":        {"FR": {"label": "Visibilité",  "short":"Visibilité","group":"grp_other"},
                       "EN": {"label": "Visibility",  "short":"Visibility","group":"grp_other"},
@@ -928,14 +928,14 @@ def render_sidebar():
         if len(user_points) > 1:
             point_choice = st.radio(
                 "📍 Point de prévision",
-                ["🌊 Sème", "⚓ Port de Cotonou"],
+                ["🌊 Sème", "⚓ Cotonou"],
                 horizontal=True,
                 key="point_radio",
             )
             st.session_state["point"] = "terminal" if "Cotonou" in point_choice else "seme"
         else:
             # Client : afficher son point sans option de changement
-            pt_label = "⚓ Port de Cotonou" if user_points[0]=="terminal" else "🌊 Sème"
+            pt_label = "⚓ Cotonou" if user_points[0]=="terminal" else "🌊 Sème"
             st.markdown(f"**📍 Point :** {pt_label}")
 
         st.divider()

@@ -1093,12 +1093,23 @@ def render_sidebar():
                     h_str = str(cr.get("heure","")).strip()
                     mask  = df_base["valid_local"].dt.strftime("%H:%M") == h_str
                     if mask.any():
+                        # Colonnes numériques
                         for col, key in [("t2m_c","T(°C)"),("rain_pct","Rain(%)"),
-                                         ("vis_km","Vis(km)"),("sst_c","SST(°C)"),
-                                         ("weather_condition","Weather"),
+                                         ("vis_km","Vis(km)"),("sst_c","SST(°C)")]:
+                            if key in cr and cr[key] is not None:
+                                try:
+                                    df_base.loc[mask, col] = float(cr[key])
+                                except Exception:
+                                    pass
+                        # Colonnes texte
+                        for col, key in [("weather_condition","Weather"),
                                          ("confidence","Confidence")]:
                             if key in cr and cr[key] is not None:
-                                df_base.loc[mask, col] = cr[key]
+                                try:
+                                    df_base[col] = df_base[col].astype(str)
+                                    df_base.loc[mask, col] = str(cr[key])
+                                except Exception:
+                                    pass
                         n_corr += 1
                 st.session_state["df_session"] = df_base
                 st.success(f"✅ {n_corr} échéances corrigées")

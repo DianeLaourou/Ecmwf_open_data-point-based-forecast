@@ -1155,18 +1155,28 @@ def render_sidebar():
 # KPI ROW
 # ─────────────────────────────────────────────────────────────────────────────
 def render_kpi_row(df):
+    # Trouver l'échéance la plus proche de maintenant
+    now = now_local()
+    df["valid_local"] = pd.to_datetime(df["valid_local"])
+    closest_idx = (df["valid_local"] - now).abs().argsort().iloc[0]
+    row = df.iloc[closest_idx]
+
     cols = st.columns(6)
     kpis = [
-        ("swh_m",         T("kpi_swh"),  "m",   lambda s: f"{s.max():.2f}"),
-        ("wind10_spd_kt", T("kpi_wind"), "kt",  lambda s: f"{s.max():.1f}"),
-        ("wind10_gust_kt",T("kpi_gust"), "kt",  lambda s: f"{s.max():.1f}"),
-        ("mslp_hpa",      T("kpi_mslp"), "hPa", lambda s: f"{s.min():.1f}"),
-        ("sst_c",         T("kpi_sst"),  "°C",  lambda s: f"{s.mean():.1f}"),
-        ("rain_pct",      T("kpi_rain"), "%",   lambda s: f"{s.max():.0f}"),
+        ("swh_m",         T("kpi_swh"),  "m",   ".1f"),
+        ("wind10_spd_kt", T("kpi_wind"), "kt",  ".0f"),
+        ("wind10_gust_kt",T("kpi_gust"), "kt",  ".0f"),
+        ("mslp_hpa",      T("kpi_mslp"), "hPa", ".0f"),
+        ("sst_c",         T("kpi_sst"),  "°C",  ".1f"),
+        ("rain_pct",      T("kpi_rain"), "%",   ".0f"),
     ]
     for col,(var,label,unit,fmt) in zip(cols,kpis):
         with col:
-            val = fmt(df[var].dropna()) if var in df.columns else "—"
+            v = row.get(var, None)
+            if v is None or (isinstance(v, float) and pd.isna(v)):
+                val = "—"
+            else:
+                val = format(float(v), fmt)
             st.markdown(f"""
             <div class="kpi-card">
                 <div class="kpi-label">{label}</div>

@@ -1788,7 +1788,7 @@ def render_benin_terminal():
                 tree_url = f"https://api.github.com/repos/{GITHUB_OWNER}/{GITHUB_REPO_BT}/git/trees/main?recursive=1"
                 r = requests.get(tree_url, timeout=10)
                 files = sorted([f["path"] for f in r.json().get("tree",[])
-                                if f["path"].endswith(".csv") and "ECMWF_Port" in f["path"]],
+                                if f["path"].endswith(".csv")],
                                reverse=True)
                 if files:
                     raw_url = f"https://raw.githubusercontent.com/{GITHUB_OWNER}/{GITHUB_REPO_BT}/main/{files[0]}"

@@ -1744,66 +1744,47 @@ def render_benin_terminal():
         x = df_f["forecast_time_local"].dt.strftime("%a %d/%m %Hh")
         pluie_col = "Pluie(%)" if "Pluie(%)" in df_f.columns else "Pluie(mm)"
 
-        # ── Graphique combiné : T°C + Pluie + Pictogrammes ───────────────
-        fig_meteo = make_subplots(specs=[[{"secondary_y": True}]])
+        # ── Graphique T°C seul + pictogrammes au-dessus ──────────────────
+        fig_meteo = go.Figure()
 
-        # Barres probabilité de pluie (axe droit)
-        fig_meteo.add_trace(go.Bar(
-            x=x, y=df_f[pluie_col],
-            name="Pluie (%)",
-            marker_color="rgba(100,181,246,0.55)",
-            marker_line_width=0,
-        ), secondary_y=True)
-
-        # Courbe température (axe gauche)
+        # Courbe température
         fig_meteo.add_trace(go.Scatter(
             x=x, y=df_f["T(°C)"],
             name="T°C",
             line=dict(color="#FF6B6B", width=2.5),
             mode="lines+markers",
             marker=dict(size=6, color="#FF6B6B"),
-        ), secondary_y=False)
+            fill="tozeroy", fillcolor="rgba(255,107,107,0.08)",
+        ))
 
-        # Pictogrammes au-dessus des barres
+        # Pictogrammes au-dessus de la courbe
         if "Temps_sensible" in df_f.columns:
-            pluie_vals = df_f[pluie_col].fillna(0)
-            p_max = pluie_vals.max() if pluie_vals.max() > 0 else 100
+            t_vals = df_f["T(°C)"].fillna(0)
+            t_max  = t_vals.max() if t_vals.max() > 0 else 35
             for i, (_, r) in enumerate(df_f.iterrows()):
                 wx_val = str(r.get("Temps_sensible", ""))
                 icon   = BT_WX_ICONS.get(wx_val, "🌤️")
-                pluie_v = float(r.get(pluie_col, 0) or 0)
-                # Position Y : au-dessus de la barre (axe secondaire)
-                y_pos = min(pluie_v + p_max * 0.12, p_max * 0.95)
+                t_val  = float(r.get("T(°C)", 0) or 0)
                 fig_meteo.add_annotation(
-                    x=x.iloc[i] if hasattr(x, 'iloc') else x[i],
-                    y=y_pos,
+                    x=x.iloc[i] if hasattr(x, "iloc") else x[i],
+                    y=t_val,
                     text=icon,
                     showarrow=False,
                     font=dict(size=16),
-                    yref="y2",
-                    xref="x",
                     yanchor="bottom",
+                    yshift=8,
                 )
 
         fig_meteo.update_layout(
-            title=dict(text="🌡️ Température · Probabilité de pluie · Temps sensible",
+            title=dict(text="🌡️ Température & Temps sensible",
                        font=dict(size=12, color="white")),
             paper_bgcolor="#0E1117", plot_bgcolor="#161B2E",
-            font=dict(color="white", size=9), height=360,
-            margin=dict(l=55, r=65, t=50, b=70),
-            legend=dict(orientation="h", y=-0.22, font=dict(size=9)),
+            font=dict(color="white", size=9), height=320,
+            margin=dict(l=55, r=30, t=50, b=70),
+            yaxis=dict(title="T (°C)", gridcolor="#2a2a3a", color="#FF6B6B"),
             xaxis=dict(gridcolor="#2a2a3a", tickangle=-45, tickfont=dict(size=8)),
             hovermode="x unified",
-            bargap=0.15,
-        )
-        fig_meteo.update_yaxes(
-            title_text="T (°C)", gridcolor="#2a2a3a",
-            secondary_y=False, color="#FF6B6B",
-        )
-        fig_meteo.update_yaxes(
-            title_text="Pluie (%)", secondary_y=True,
-            range=[0, (df_f[pluie_col].max() or 100) * 1.4],
-            color="#64B5F6", gridcolor="rgba(0,0,0,0)",
+            showlegend=False,
         )
         st.plotly_chart(fig_meteo, use_container_width=True)
 

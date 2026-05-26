@@ -1395,11 +1395,9 @@ def main():
     <div class="marine-header">
         <div style="font-size:3rem;">🌊</div>
         <div>
-            <div class="subtitle">METEO-BENIN · DPROM / SPAM</div>
             <h1>{T('header_title')}{demo_badge}{github_badge}{corr_badge}</h1>
             <div style="color:#adb5bd;font-size:0.78rem;margin-top:0.2rem;">
-                📍 6.22°N, 2.63°E · Golfe de Guinée, Bénin &nbsp;|&nbsp;
-                {T('header_source')} &nbsp;|&nbsp;
+                📍 Sème, Golfe de Guinée, Bénin &nbsp;|&nbsp;
                 {T('header_updated')} : {now_loc.strftime('%d/%m/%Y %H:%M')} (UTC+1)
             </div>
         </div>
@@ -1421,8 +1419,7 @@ def main():
     st.markdown(f"""
     <div style='text-align:center;color:#4a6480;font-size:0.68rem;margin-top:2rem;padding:1rem 0;
                 border-top:1px solid rgba(21,170,191,0.15);'>
-        © 2026 · LAOUROU MAKONDJOU DIANE · Météorologiste &amp; Data Scientist · METEO-BENIN / DPROM / SPAM<br>
-        ECMWF Open Data (CC BY 4.0) · Copernicus Marine Service
+        © 2026 · LAOUROU MAKONDJOU DIANE · Meteorologist & Data Scientist · METEO-BENIN / DPROM / SPAM
     </div>""", unsafe_allow_html=True)
 
 
@@ -1818,11 +1815,9 @@ def render_benin_terminal():
                  style='height:55px;object-fit:contain;vertical-align:middle;margin-right:1rem;'/>
         </div>
         <div>
-            <div class="subtitle">METEO-BENIN · DPROM / SPAM</div>
             <h1>BULLETIN SPÉCIAL BÉNIN TERMINAL</h1>
             <div style="color:#adb5bd;font-size:0.78rem;margin-top:0.2rem;">
-                📍 6.35°N, 2.43°E · Port de Cotonou, Bénin &nbsp;|&nbsp;
-                Source : ECMWF via GEE &nbsp;|&nbsp;
+                📍 Port de Cotonou, Bénin &nbsp;|&nbsp;
                 Mis à jour : {now_loc.strftime("%d/%m/%Y %H:%M")} (UTC+1)
             </div>
         </div>
@@ -2216,8 +2211,7 @@ def render_benin_terminal():
     st.markdown("""
     <div style='text-align:center;color:#4a6480;font-size:0.68rem;margin-top:2rem;
                 padding:1rem 0;border-top:1px solid rgba(46,117,182,0.15);'>
-        © 2026 · LAOUROU MAKONDJOU DIANE · Météorologiste & Data Scientist · METEO-BENIN / DPROM / SPAM<br>
-
+        © 2026 · LAOUROU MAKONDJOU DIANE · Meteorologist & Data Scientist · METEO-BENIN / DPROM / SPAM
     </div>""", unsafe_allow_html=True)
 
 

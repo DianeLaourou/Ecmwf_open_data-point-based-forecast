@@ -9,6 +9,7 @@ Auteur : LAOUROU MAKONDJOU DIANE
 """
 
 import streamlit as st
+import hashlib
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
@@ -21,6 +22,69 @@ import pytz
 
 # ── Fuseau horaire Bénin UTC+1 ────────────────────────────────────────────────
 TZ_BENIN   = pytz.timezone("Africa/Porto-Novo")
+
+# =============================================================================
+# AUTHENTIFICATION
+# =============================================================================
+
+def _hash(pwd):
+    return hashlib.sha256(pwd.encode()).hexdigest()
+
+def _get_users():
+    try:
+        users = {}
+        for uname, udata in st.secrets.get("users", {}).items():
+            users[uname] = {"name":udata["name"],"hash":udata["hash"],
+                            "role":udata["role"],"points":list(udata["points"])}
+        return users if users else _default_users()
+    except Exception:
+        return _default_users()
+
+def _default_users():
+    return {
+        "diane":    {"name":"LAOUROU MAKONDJOU DIANE",
+                     "hash":"841fccf7e520761479132298008eb9342d88c7650d2e9a96f593e47720df8d00",
+                     "role":"admin","points":["seme","terminal"]},
+        "wapco":    {"name":"Opérateur WAPCO",
+                     "hash":"16eb9e9150beff2ff4c688a8c4655f416410c6e224b9e219a72de82e38b1db3c",
+                     "role":"client","points":["seme"]},
+        "terminal": {"name":"Opérateur Bénin Terminal",
+                     "hash":"ee6cdf0e70179451a50180d326ba13ab6689e84d1b856fe0e21717b220fb44a2",
+                     "role":"client","points":["terminal"]},
+    }
+
+def render_login():
+    st.markdown("""
+    <div style='display:flex;justify-content:center;margin-top:4rem;'>
+    <div style='background:#1E2130;border:1px solid rgba(21,170,191,0.3);
+                border-radius:16px;padding:2.5rem 3rem;min-width:380px;text-align:center;'>
+        <div style='font-size:3rem;'>🌊</div>
+        <h2 style='color:white;margin:0.3rem 0;'>METEO-BENIN</h2>
+        <div style='color:#adb5bd;font-size:0.8rem;margin-bottom:1.5rem;'>
+            DPROM / SPAM — Prévisions Marines
+        </div>
+    </div></div>""", unsafe_allow_html=True)
+    _, col_f, _ = st.columns([1,2,1])
+    with col_f:
+        st.markdown("### 🔐 Connexion")
+        username = st.text_input("Identifiant", placeholder="Votre identifiant", key="login_user")
+        password = st.text_input("Mot de passe", type="password", key="login_pwd")
+        if st.button("Se connecter", use_container_width=True, type="primary"):
+            users = _get_users()
+            user  = users.get(username.lower())
+            if user and _hash(password) == user["hash"]:
+                st.session_state["authenticated"] = True
+                st.session_state["user_name"]     = user["name"]
+                st.session_state["user_role"]     = user["role"]
+                st.session_state["user_points"]   = user["points"]
+                st.session_state["username"]      = username.lower()
+                if len(user["points"]) == 1:
+                    st.session_state["point"] = user["points"][0]
+                st.rerun()
+            else:
+                st.error("❌ Identifiant ou mot de passe incorrect.")
+        st.markdown("<div style='text-align:center;color:#4a6480;font-size:0.7rem;margin-top:1.5rem;'>© 2026 METEO-BENIN</div>",
+                    unsafe_allow_html=True)
 UTC_OFFSET = timedelta(hours=1)
 
 # Logo METEO-BENIN
@@ -831,14 +895,38 @@ def render_sidebar():
 
         st.divider()
 
-        # ── Sélecteur de point ────────────────────────────────
-        point_choice = st.radio(
-            "📍 Point de prévision",
-            ["🌊 Sème", "⚓ Port de Cotonou"],
-            horizontal=True,
-            key="point_radio",
-        )
-        st.session_state["point"] = "terminal" if "Cotonou" in point_choice else "seme"
+        # ── Info utilisateur + déconnexion ───────────────────
+        user_name   = st.session_state.get("user_name","")
+        user_role   = st.session_state.get("user_role","client")
+        user_points = st.session_state.get("user_points",["seme"])
+        st.markdown(f"""
+        <div style='background:#1E2130;border-radius:8px;padding:8px 12px;margin-bottom:0.5rem;'>
+            👤 <b style='font-size:0.8rem;'>{user_name}</b><br>
+            <span style='color:#adb5bd;font-size:0.7rem;'>
+                {"🔑 Admin" if user_role=="admin" else "👁️ Visualisation"}
+            </span>
+        </div>""", unsafe_allow_html=True)
+        if st.button("🚪 Déconnexion", use_container_width=True, key="logout_btn"):
+            for k in ["authenticated","user_name","user_role","user_points",
+                      "username","point","df_session","bt_df","df_loaded"]:
+                st.session_state.pop(k, None)
+            st.rerun()
+
+        st.divider()
+
+        # ── Sélecteur de point (admin uniquement) ─────────────
+        if len(user_points) > 1:
+            point_choice = st.radio(
+                "📍 Point de prévision",
+                ["🌊 Sème", "⚓ Port de Cotonou"],
+                horizontal=True,
+                key="point_radio",
+            )
+            st.session_state["point"] = "terminal" if "Cotonou" in point_choice else "seme"
+        else:
+            # Client : afficher son point sans option de changement
+            pt_label = "⚓ Port de Cotonou" if user_points[0]=="terminal" else "🌊 Sème"
+            st.markdown(f"**📍 Point :** {pt_label}")
 
         st.divider()
         st.markdown(f"## {T('settings')}")
@@ -1185,6 +1273,19 @@ def render_main_tabs(df, df_filtered, params):
 # MAIN
 # ─────────────────────────────────────────────────────────────────────────────
 def main():
+    # ── Vérification authentification ─────────────────────────────────────
+    if not st.session_state.get("authenticated", False):
+        render_login()
+        return
+
+    user_role   = st.session_state.get("user_role", "client")
+    user_name   = st.session_state.get("user_name", "")
+    user_points = st.session_state.get("user_points", ["seme"])
+
+    # Forcer le point si client avec un seul point
+    if len(user_points) == 1:
+        st.session_state["point"] = user_points[0]
+
     if "lang" not in st.session_state:
         st.session_state["lang"] = "FR"
 
@@ -1216,7 +1317,14 @@ def main():
 
     # ── Routage selon le point sélectionné ───────────────────
     if st.session_state.get("point") == "terminal":
-        render_benin_terminal()
+        if "terminal" in user_points:
+            render_benin_terminal()
+        else:
+            st.error("❌ Accès non autorisé à ce point.")
+        return
+
+    if "seme" not in user_points:
+        st.error("❌ Accès non autorisé à ce point.")
         return
 
     # (données déjà chargées ci-dessus)

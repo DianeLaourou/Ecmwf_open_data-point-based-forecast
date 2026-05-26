@@ -1493,13 +1493,15 @@ def bt_plot_wind(df, height, v_col, g_col):
         line=dict(color="#FF8A65", width=2, dash="dash"), mode="lines+markers",
         marker=dict(size=4, symbol="triangle-up"),
         fill="tonexty", fillcolor="rgba(255,138,101,0.08)"))
+    # Auto-ajustement : marge 20% au-dessus du max des rafales
+    y_auto = max(df[g_col].max() * 1.2, 15) if not df[g_col].dropna().empty else 50
     fig.update_layout(
         title=dict(text=f"⚡ Vent à {height}", font=dict(size=12, color="white")),
         paper_bgcolor="#0E1117", plot_bgcolor="#161B2E",
         font=dict(color="white", size=9), height=260,
         margin=dict(l=50, r=50, t=35, b=55),
         legend=dict(orientation="h", y=-0.3, font=dict(size=8)),
-        yaxis=dict(title="km/h", gridcolor="#2a2a3a", range=[0, ymax]),
+        yaxis=dict(title="km/h", gridcolor="#2a2a3a", range=[0, y_auto]),
         xaxis=dict(gridcolor="#2a2a3a", tickangle=-45, tickfont=dict(size=7)),
         hovermode="x unified",
     )
@@ -1576,6 +1578,112 @@ def bt_generate_demo():
     })
 
 
+def read_bt_pdf_corrections(pdf_bytes):
+    """
+    Lit le PDF bulletin Bénin Terminal et extrait les corrections :
+    T°C, Temps sensible, Probabilité de pluie, Visibilité.
+    Retourne un DataFrame avec colonnes :
+    forecast_time_local, T(°C), Temps_sensible, Pluie(%), Visibilite_km
+    """
+    try:
+        import pdfplumber, io, re
+        rows = []
+        # Mapping temps sensible PDF → liste déroulante dashboard
+        WX_MAP = {
+            "ensoleillé":               "Ensoleillé",
+            "peu nuageux":              "Peu nuageux",
+            "modérément nuageux":       "Modérément nuageux",
+            "moderement nuageux":       "Modérément nuageux",
+            "assez nuageux":            "Assez nuageux",
+            "couvert":                  "Couvert",
+            "orages et pluies":         "Orages et pluies",
+            "averses de fortes pluies": "Averses de fortes pluies",
+            "averses de pluies faibles":"Averses de pluies faibles",
+            "poussière":                "Poussière",
+            "poussiere":                "Poussière",
+            "brume sèche":              "Brume sèche",
+            "brume seche":              "Brume sèche",
+            "brouillard":               "Brouillard/Brume humide",
+            "brume humide":             "Brouillard/Brume humide",
+        }
+
+        with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
+            for page in pdf.pages:
+                tables = page.extract_tables()
+                for table in tables:
+                    for row in table:
+                        if not row or len(row) < 5:
+                            continue
+                        # Chercher lignes avec heure (ex: 21h, 01h, 07h...)
+                        heure_cell = str(row[1] or "").strip()
+                        date_cell  = str(row[0] or "").strip()
+                        if not re.match(r"[0-9]{1,2}h", heure_cell):
+                            continue
+                        try:
+                            # T°C — colonne 13 (index fixe dans le bulletin)
+                            t_val = None
+                            for ci in range(min(len(row), 16)):
+                                cell = str(row[ci] or "").strip().replace(",",".")
+                                try:
+                                    v = float(cell)
+                                    if 15 <= v <= 45:
+                                        t_val = v
+                                        break
+                                except: pass
+
+                            # Temps sensible — chercher cellule texte météo
+                            wx_val = None
+                            for ci in range(len(row)):
+                                cell_low = str(row[ci] or "").strip().lower()
+                                for key, mapped in WX_MAP.items():
+                                    if key in cell_low:
+                                        wx_val = mapped
+                                        break
+                                if wx_val: break
+
+                            # Pluie % — chercher entier entre 0 et 100
+                            pluie_val = None
+                            for ci in range(len(row)):
+                                cell = str(row[ci] or "").strip()
+                                try:
+                                    v = float(cell)
+                                    if 0 <= v <= 100 and v != t_val:
+                                        pluie_val = v
+                                except: pass
+
+                            # Visibilité — chercher valeur entre 1 et 20
+                            vis_val = None
+                            for ci in range(len(row)-1, -1, -1):
+                                cell = str(row[ci] or "").strip()
+                                try:
+                                    v = float(cell)
+                                    if 1 <= v <= 20:
+                                        vis_val = v
+                                        break
+                                except: pass
+
+                            if t_val or wx_val:
+                                rows.append({
+                                    "heure_str":    heure_cell,
+                                    "date_str":     date_cell,
+                                    "T(°C)":        t_val,
+                                    "Temps_sensible": wx_val,
+                                    "Pluie(%)":     pluie_val,
+                                    "Visibilite_km": vis_val,
+                                })
+                        except Exception:
+                            continue
+
+        if not rows:
+            return None, "Aucune donnée extraite du PDF"
+
+        df_corr = pd.DataFrame(rows)
+        return df_corr, None
+
+    except Exception as e:
+        return None, str(e)
+
+
 # Pictogrammes temps sensible Bénin Terminal
 BT_WX_ICONS = {
     "Ensoleillé":               "☀️",
@@ -1627,9 +1735,10 @@ def render_benin_terminal():
         st.divider()
         st.markdown("### ⚓ Bénin Terminal")
 
-        # Upload CSV — admin uniquement
+        # Upload CSV + PDF — admin uniquement
         if user_role == "admin":
-            bt_file = st.file_uploader("📂 Charger bulletin CSV", type=["csv"], key="bt_uploader")
+            st.markdown("**📂 Bulletin CSV**")
+            bt_file = st.file_uploader("Charger CSV", type=["csv"], key="bt_uploader")
             if bt_file:
                 df_bt = pd.read_csv(bt_file)
                 df_bt["forecast_time_local"] = pd.to_datetime(df_bt["forecast_time_local"])
@@ -1638,7 +1747,37 @@ def render_benin_terminal():
                     if col not in df_bt.columns:
                         df_bt[col] = default
                 st.session_state["bt_df"] = df_bt
-                st.success(f"✅ {len(df_bt)} échéances")
+                st.success(f"✅ {len(df_bt)} échéances chargées")
+
+            st.markdown("**📄 PDF corrigé**")
+            st.caption("T°C, Temps sensible, Pluie, Visibilité")
+            bt_pdf = st.file_uploader("Charger PDF bulletin", type=["pdf"], key="bt_pdf_uploader")
+            if bt_pdf and "bt_df" in st.session_state:
+                pdf_bytes = bt_pdf.read()
+                df_corr, err = read_bt_pdf_corrections(pdf_bytes)
+                if err:
+                    st.warning(f"⚠️ PDF : {err}")
+                elif df_corr is not None:
+                    # Appliquer corrections sur bt_df
+                    df_base = st.session_state["bt_df"].copy()
+                    n_corr = 0
+                    for _, cr in df_corr.iterrows():
+                        h_str = str(cr["heure_str"]).replace("h","").zfill(2)
+                        mask  = df_base["forecast_time_local"].dt.strftime("%H") == h_str
+                        if mask.any():
+                            if cr["T(°C)"] is not None:
+                                df_base.loc[mask, "T(°C)"] = cr["T(°C)"]
+                            if cr["Temps_sensible"] is not None:
+                                df_base.loc[mask, "Temps_sensible"] = cr["Temps_sensible"]
+                            if cr["Pluie(%)"] is not None:
+                                df_base.loc[mask, "Pluie(%)"] = cr["Pluie(%)"]
+                            if cr["Visibilite_km"] is not None:
+                                df_base.loc[mask, "Visibilite_km"] = cr["Visibilite_km"]
+                            n_corr += 1
+                    st.session_state["bt_df"] = df_base
+                    st.success(f"✅ {n_corr} échéances corrigées depuis PDF")
+            elif bt_pdf and "bt_df" not in st.session_state:
+                st.warning("⚠️ Chargez d'abord le CSV avant le PDF")
             st.divider()
 
         # Chargement données
@@ -1781,7 +1920,11 @@ def render_benin_terminal():
             paper_bgcolor="#0E1117", plot_bgcolor="#161B2E",
             font=dict(color="white", size=9), height=320,
             margin=dict(l=55, r=30, t=50, b=70),
-            yaxis=dict(title="T (°C)", gridcolor="#2a2a3a", color="#FF6B6B"),
+            yaxis=dict(
+                title="T (°C)", gridcolor="#2a2a3a", color="#FF6B6B",
+                range=[20, 35], dtick=2,
+                tickmode="linear", tick0=20,
+            ),
             xaxis=dict(gridcolor="#2a2a3a", tickangle=-45, tickfont=dict(size=8)),
             hovermode="x unified",
             showlegend=False,

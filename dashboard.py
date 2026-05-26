@@ -1580,105 +1580,103 @@ def bt_generate_demo():
 
 def read_bt_pdf_corrections(pdf_bytes):
     """
-    Lit le PDF bulletin Bénin Terminal et extrait les corrections :
-    T°C, Temps sensible, Probabilité de pluie, Visibilité.
-    Retourne un DataFrame avec colonnes :
-    forecast_time_local, T(°C), Temps_sensible, Pluie(%), Visibilite_km
+    Lit le PDF bulletin Bénin Terminal et extrait les corrections.
+    Structure connue du PDF :
+      col 2  = Heure (21h, 01h...)
+      col 16 = T°C
+      col 17+18 = Temps sensible (parfois scindé)
+      col 20 = Pluie (%)
+      col 21 = Visibilité (km)
     """
     try:
         import pdfplumber, io, re
-        rows = []
-        # Mapping temps sensible PDF → liste déroulante dashboard
-        WX_MAP = {
-            "ensoleillé":               "Ensoleillé",
-            "peu nuageux":              "Peu nuageux",
-            "modérément nuageux":       "Modérément nuageux",
-            "moderement nuageux":       "Modérément nuageux",
-            "assez nuageux":            "Assez nuageux",
-            "couvert":                  "Couvert",
-            "orages et pluies":         "Orages et pluies",
-            "averses de fortes pluies": "Averses de fortes pluies",
-            "averses de pluies faibles":"Averses de pluies faibles",
-            "poussière":                "Poussière",
-            "poussiere":                "Poussière",
-            "brume sèche":              "Brume sèche",
-            "brume seche":              "Brume sèche",
-            "brouillard":               "Brouillard/Brume humide",
-            "brume humide":             "Brouillard/Brume humide",
-        }
 
+        def map_wx(text):
+            """Reconnaît le temps sensible même si le texte est fragmenté par pdfplumber."""
+            import unicodedata
+            # Normaliser : supprimer accents, minuscules, espaces/retours
+            def norm(s):
+                s = unicodedata.normalize("NFKD", str(s or ""))
+                s = "".join(c for c in s if not unicodedata.combining(c))
+                return s.lower().replace("\n"," ").replace("\r"," ").strip()
+            t = norm(text)
+            # Reconstituer les fragments courants du PDF
+            t = t.replace("as nua sez geux","assez nuageux")
+            t = t.replace("as\nnua sez\ngeux","assez nuageux")
+            t = t.replace("mode rément nuageux","moderement nuageux")
+            t = t.replace("mode nuageux","moderement nuageux")
+            t = t.replace("aver pluies ses de faibles","averses de pluies faibles")
+            t = t.replace("ora pl ges et uies","orages et pluies")
+            t = t.replace("ora","orages et pluies") if t == "ora" else t
+            WX_MAP = [
+                (["ensoleill"],                         "Ensoleillé"),
+                (["peu nuageux"],                       "Peu nuageux"),
+                (["moderement","modérément","mode r"],  "Modérément nuageux"),
+                (["assez nuageux","as nua"],             "Assez nuageux"),
+                (["couvert"],                            "Couvert"),
+                (["orages","ora "],                      "Orages et pluies"),
+                (["averses de fortes"],                  "Averses de fortes pluies"),
+                (["averses","aver"],                     "Averses de pluies faibles"),
+                (["poussi"],                             "Poussière"),
+                (["brume s","brume seche"],              "Brume sèche"),
+                (["brouillard","brume humide"],          "Brouillard/Brume humide"),
+            ]
+            for keys, val in WX_MAP:
+                if any(k in t for k in keys):
+                    return val
+            return None
+
+        def safe_float(cell):
+            try:
+                return float(str(cell or "").strip().replace(",","."))
+            except:
+                return None
+
+        rows = []
         with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
             for page in pdf.pages:
                 tables = page.extract_tables()
                 for table in tables:
                     for row in table:
-                        if not row or len(row) < 5:
+                        if not row or len(row) < 18:
                             continue
-                        # Chercher lignes avec heure (ex: 21h, 01h, 07h...)
-                        heure_cell = str(row[1] or "").strip()
-                        date_cell  = str(row[0] or "").strip()
-                        if not re.match(r"[0-9]{1,2}h", heure_cell):
+                        # Colonne 2 = heure
+                        heure = str(row[2] or "").strip()
+                        if not re.match(r"[0-9]{1,2}h", heure):
                             continue
-                        try:
-                            # T°C — colonne 13 (index fixe dans le bulletin)
+
+                        # T°C — col 16
+                        t_val = safe_float(row[16])
+                        if t_val is not None and not (15 <= t_val <= 45):
                             t_val = None
-                            for ci in range(min(len(row), 16)):
-                                cell = str(row[ci] or "").strip().replace(",",".")
-                                try:
-                                    v = float(cell)
-                                    if 15 <= v <= 45:
-                                        t_val = v
-                                        break
-                                except: pass
 
-                            # Temps sensible — chercher cellule texte météo
-                            wx_val = None
-                            for ci in range(len(row)):
-                                cell_low = str(row[ci] or "").strip().lower()
-                                for key, mapped in WX_MAP.items():
-                                    if key in cell_low:
-                                        wx_val = mapped
-                                        break
-                                if wx_val: break
+                        # Temps sensible — col 17 + 18 concaténés
+                        wx_raw = (str(row[17] or "") + " " + str(row[18] or "")).strip()
+                        wx_val = map_wx(wx_raw)
 
-                            # Pluie % — chercher entier entre 0 et 100
+                        # Pluie % — col 20
+                        pluie_val = safe_float(row[20]) if len(row) > 20 else None
+                        if pluie_val is not None and not (0 <= pluie_val <= 100):
                             pluie_val = None
-                            for ci in range(len(row)):
-                                cell = str(row[ci] or "").strip()
-                                try:
-                                    v = float(cell)
-                                    if 0 <= v <= 100 and v != t_val:
-                                        pluie_val = v
-                                except: pass
 
-                            # Visibilité — chercher valeur entre 1 et 20
+                        # Visibilité — col 21
+                        vis_val = safe_float(row[21]) if len(row) > 21 else None
+                        if vis_val is not None and not (1 <= vis_val <= 50):
                             vis_val = None
-                            for ci in range(len(row)-1, -1, -1):
-                                cell = str(row[ci] or "").strip()
-                                try:
-                                    v = float(cell)
-                                    if 1 <= v <= 20:
-                                        vis_val = v
-                                        break
-                                except: pass
 
-                            if t_val or wx_val:
-                                rows.append({
-                                    "heure_str":    heure_cell,
-                                    "date_str":     date_cell,
-                                    "T(°C)":        t_val,
-                                    "Temps_sensible": wx_val,
-                                    "Pluie(%)":     pluie_val,
-                                    "Visibilite_km": vis_val,
-                                })
-                        except Exception:
-                            continue
+                        if any(v is not None for v in [t_val, wx_val, pluie_val, vis_val]):
+                            rows.append({
+                                "heure_str":     heure,
+                                "T(°C)":         t_val,
+                                "Temps_sensible": wx_val,
+                                "Pluie(%)":      pluie_val,
+                                "Visibilite_km": vis_val,
+                            })
 
         if not rows:
             return None, "Aucune donnée extraite du PDF"
 
-        df_corr = pd.DataFrame(rows)
-        return df_corr, None
+        return pd.DataFrame(rows), None
 
     except Exception as e:
         return None, str(e)

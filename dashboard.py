@@ -1372,157 +1372,377 @@ def bt_plot_wind(df, height, v_col, g_col):
     )
     return fig
 
+def bt_make_wind_rose(df, dir_col, spd_col, title=None):
+    """Rose des vents pour Bénin Terminal (directions en FR, vitesses en km/h)."""
+    if dir_col not in df.columns or spd_col not in df.columns:
+        return go.Figure()
+    DIR_MAP = {"N":0,"NNE":22.5,"NE":45,"ENE":67.5,"E":90,"ESE":112.5,
+               "SE":135,"SSE":157.5,"S":180,"SSO":202.5,"SO":225,"OSO":247.5,
+               "O":270,"ONO":292.5,"NO":315,"NNO":337.5,
+               "SSW":202.5,"SW":225,"WSW":247.5,"W":270,"WNW":292.5,"NW":315,"NNW":337.5}
+    dirs = df[dir_col].map(lambda x: DIR_MAP.get(str(x).strip().upper(), None)).dropna()
+    spds = df[spd_col][dirs.index]
+    if len(dirs) == 0:
+        return go.Figure()
+    bins = [0,10,20,30,40,100]
+    labels = ["0-10","10-20","20-30","30-40",">40"]
+    colors = ["#4FC3F7","#81C784","#FFB74D","#E67E22","#E74C3C"]
+    dir_labels = ["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSO","SO","OSO","O","ONO","NO","NNO"]
+    sector_size = 22.5
+    traces = []
+    for i, (lo, hi) in enumerate(zip(bins[:-1], bins[1:])):
+        mask = (spds >= lo) & (spds < hi)
+        sector_dirs = dirs[mask]
+        r = []
+        for s_deg in [j*sector_size for j in range(16)]:
+            count = ((sector_dirs >= s_deg - sector_size/2) & (sector_dirs < s_deg + sector_size/2)).sum()
+            r.append(count)
+        traces.append(go.Barpolar(r=r, theta=dir_labels, name=f"{labels[i]} km/h",
+            marker_color=colors[i], opacity=0.85))
+    fig = go.Figure(traces)
+    fig.update_layout(
+        title=dict(text=title or "Rose des vents", font=dict(size=11, color="white")),
+        paper_bgcolor="#0E1117", plot_bgcolor="#0E1117",
+        font=dict(color="white", size=9), height=300,
+        margin=dict(l=20, r=20, t=45, b=20),
+        polar=dict(
+            bgcolor="#161B2E",
+            radialaxis=dict(showticklabels=False, gridcolor="#2a2a3a"),
+            angularaxis=dict(direction="clockwise", gridcolor="#2a2a3a"),
+        ),
+        legend=dict(orientation="h", y=-0.12, font=dict(size=8)),
+        showlegend=True,
+    )
+    return fig
+
+
+def bt_generate_demo():
+    """Données démo Bénin Terminal."""
+    import numpy as np
+    now = now_local()
+    times = [now + timedelta(hours=2*i) for i in range(21)]
+    wx_list = ["Assez nuageux","Modérément nuageux","Averses de pluies faibles"]
+    return pd.DataFrame({
+        "forecast_time_local": times,
+        "V10m_Dir":    ["SO"]*21,
+        "V10m_Km/h":   [10+5*np.sin(i/3) for i in range(21)],
+        "RafaleV10_Km/h": [20+8*np.sin(i/3) for i in range(21)],
+        "V22m_Dir":    ["SO"]*21,
+        "V22m_Km/h":   [11+5*np.sin(i/3) for i in range(21)],
+        "RafaleV22_Km/h": [22+9*np.sin(i/3) for i in range(21)],
+        "V60m_Dir":    ["SO"]*21,
+        "V60m_Km/h":   [13+6*np.sin(i/3) for i in range(21)],
+        "RafaleV60_Km/h": [26+10*np.sin(i/3) for i in range(21)],
+        "V70m_Dir":    ["SO"]*21,
+        "V70m_Km/h":   [14+6*np.sin(i/3) for i in range(21)],
+        "RafaleV70_Km/h": [28+11*np.sin(i/3) for i in range(21)],
+        "T(°C)":       [27+np.sin(i/4) for i in range(21)],
+        "Pluie(%)":    [10]*21,
+        "Visibilite_km": [9]*21,
+        "Temps_sensible": [wx_list[i%3] for i in range(21)],
+    })
+
+
+# Pictogrammes temps sensible Bénin Terminal
+BT_WX_ICONS = {
+    "Ensoleillé":               "☀️",
+    "Peu nuageux":              "🌤️",
+    "Modérément nuageux":       "⛅",
+    "Assez nuageux":            "🌥️",
+    "Couvert":                  "☁️",
+    "Orages et pluies":         "⛈️",
+    "Averses de fortes pluies": "🌧️",
+    "Averses de pluies faibles":"🌦️",
+    "Poussière":                "🌫️",
+    "Brume sèche":              "🌫️",
+    "Brouillard/Brume humide":  "🌁",
+}
+
+BT_WX_LIST = list(BT_WX_ICONS.keys())
+
+
 def render_benin_terminal():
-    """Affichage complet Bénin Terminal."""
+    """Affichage complet Bénin Terminal — même architecture que Sème."""
     import plotly.graph_objects as go
     from plotly.subplots import make_subplots
+    import numpy as np
 
-    st.markdown("""
-    <div style='background:linear-gradient(135deg,#0d2240,#1a3a5c);
-                border-radius:12px;padding:1.2rem 1.5rem;margin-bottom:1rem;
-                border:1px solid rgba(46,117,182,0.4);'>
-        <div style='font-size:2rem;'>⚓</div>
-        <h2 style='color:white;margin:0;'>Port de Cotonou — Bénin Terminal</h2>
-        <div style='color:#adb5bd;font-size:0.78rem;'>
-            📍 6.35°N, 2.43°E &nbsp;|&nbsp; Source : ECMWF via GEE &nbsp;|&nbsp;
-            METEO-BENIN / DPROM / SPAM
+    # ── En-tête ──────────────────────────────────────────────────────────────
+    now_loc = now_local()
+    st.markdown(f"""
+    <div class="marine-header">
+        <div style="font-size:3rem;">⚓</div>
+        <div>
+            <div class="subtitle">METEO-BENIN · DPROM / SPAM</div>
+            <h1>BULLETIN SPÉCIAL BÉNIN TERMINAL</h1>
+            <div style="color:#adb5bd;font-size:0.78rem;margin-top:0.2rem;">
+                📍 6.35°N, 2.43°E · Port de Cotonou, Bénin &nbsp;|&nbsp;
+                Source : ECMWF via GEE &nbsp;|&nbsp;
+                Mis à jour : {now_loc.strftime("%d/%m/%Y %H:%M")} (UTC+1)
+            </div>
         </div>
     </div>""", unsafe_allow_html=True)
 
-    # Chargement CSV
-    uploaded = st.session_state.get("bt_csv_bytes")
-    df_bt = None
+    # ── Chargement CSV ────────────────────────────────────────────────────────
+    is_demo = False
+    bt_file = st.file_uploader("📂 Bulletin CSV Bénin Terminal", type=["csv"], key="bt_uploader")
+    if bt_file:
+        df_bt = pd.read_csv(bt_file)
+        df_bt["forecast_time_local"] = pd.to_datetime(df_bt["forecast_time_local"])
+        # Ajouter colonnes corrigées si absentes
+        for col, default in [("T(°C)", 28.0), ("Pluie(%)", 10.0),
+                              ("Visibilite_km", 9.0), ("Temps_sensible", "Assez nuageux")]:
+            if col not in df_bt.columns:
+                df_bt[col] = default
+        st.session_state["bt_df"] = df_bt
+        st.success(f"✅ {len(df_bt)} échéances chargées")
+    elif "bt_df" in st.session_state:
+        df_bt = st.session_state["bt_df"]
+    else:
+        df_bt = bt_generate_demo()
+        is_demo = True
+        st.caption("⚠️ Mode démonstration — chargez un bulletin CSV")
 
-    col_up, col_src = st.columns([2,1])
-    with col_up:
-        bt_file = st.file_uploader("📂 Charger un bulletin CSV", type=["csv"], key="bt_uploader")
-        if bt_file:
-            df_bt = pd.read_csv(bt_file)
-            df_bt["forecast_time_local"] = pd.to_datetime(df_bt["forecast_time_local"])
-            st.success(f"✅ {len(df_bt)} échéances chargées")
+    # Badge démo
+    demo_badge = " · <span style='color:#ffa94d;font-size:0.7rem;'>DEMO</span>" if is_demo else ""
 
-    if df_bt is None:
-        st.info("💡 Chargez un bulletin CSV Bénin Terminal via le bouton ci-dessus.")
-        # Données démo
-        import numpy as np
-        now = now_local()
-        times = [now + timedelta(hours=2*i) for i in range(21)]
-        df_bt = pd.DataFrame({
-            "forecast_time_local": times,
-            "V10m_Dir":"SO","V10m_Km/h":  [10+5*np.sin(i/3) for i in range(21)],
-            "RafaleV10_Km/h":             [20+8*np.sin(i/3) for i in range(21)],
-            "V22m_Dir":"SO","V22m_Km/h":  [11+5*np.sin(i/3) for i in range(21)],
-            "RafaleV22_Km/h":             [22+9*np.sin(i/3) for i in range(21)],
-            "V60m_Dir":"SO","V60m_Km/h":  [13+6*np.sin(i/3) for i in range(21)],
-            "RafaleV60_Km/h":             [26+10*np.sin(i/3) for i in range(21)],
-            "V70m_Dir":"SO","V70m_Km/h":  [14+6*np.sin(i/3) for i in range(21)],
-            "RafaleV70_Km/h":             [28+11*np.sin(i/3) for i in range(21)],
-            "T(°C)":                      [27+np.sin(i/4) for i in range(21)],
-            "Pluie(mm)":                  [0.01]*21,
-        })
-        st.caption("⚠️ Données de démonstration")
+    # ── Filtre temporel ───────────────────────────────────────────────────────
+    df_bt["forecast_time_local"] = pd.to_datetime(df_bt["forecast_time_local"])
+    times = sorted(df_bt["forecast_time_local"].dt.to_pydatetime().tolist())
+    dt_min = times[0]; dt_max = times[-1]
+    _19h = dt_min.replace(hour=19, minute=0, second=0, microsecond=0)
+    _19h_times = [t for t in times if t >= _19h]
+    _def_start = _19h_times[0] if _19h_times else dt_min
 
-    # Alerte globale
-    lbl, css, msg = bt_global_alert(df_bt)
-    st.markdown(f'<div class="warning-box {css}"><b>{lbl}</b> — {msg}</div>',
+    show_past = st.toggle("🕐 Voir les échéances passées", value=False, key="bt_show_past")
+    def_start = dt_min if show_past else _def_start
+
+    col_fa, col_fb = st.columns(2)
+    with col_fa:
+        s_d = st.date_input("De", value=def_start.date(), min_value=dt_min.date(),
+                            max_value=dt_max.date(), key="bt_sd")
+        _hs = sorted({t.hour for t in times if t.date()==s_d}) or list(range(0,24,2))
+        _def_sh = def_start.hour if s_d == def_start.date() else _hs[0]
+        _sh_idx = _hs.index(_def_sh) if _def_sh in _hs else 0
+        s_h = st.selectbox("Heure", _hs, format_func=lambda h:f"{h:02d}:00",
+                           index=_sh_idx, key="bt_sh")
+    with col_fb:
+        e_d = st.date_input("À", value=dt_max.date(), min_value=dt_min.date(),
+                            max_value=dt_max.date(), key="bt_ed")
+        _he = sorted({t.hour for t in times if t.date()==e_d}) or list(range(0,24,2))
+        e_h = st.selectbox("Heure", _he, format_func=lambda h:f"{h:02d}:00",
+                           index=len(_he)-1, key="bt_eh")
+
+    t_start = datetime.combine(s_d, datetime.min.time()).replace(hour=s_h)
+    t_end   = datetime.combine(e_d, datetime.min.time()).replace(hour=e_h)
+    df_f = df_bt[(df_bt["forecast_time_local"] >= pd.Timestamp(t_start)) &
+                 (df_bt["forecast_time_local"] <= pd.Timestamp(t_end))].copy()
+    if df_f.empty: df_f = df_bt.copy()
+
+    # ── Alerte globale ────────────────────────────────────────────────────────
+    lbl_a, css_a, msg_a = bt_global_alert(df_f)
+    st.markdown(f'''<div class="warning-box {css_a}"><b>{lbl_a}</b> — {msg_a}</div>''',
                 unsafe_allow_html=True)
 
-    # KPI rafales
-    st.markdown("### 💨 Rafales actuelles")
+    # ── KPI ───────────────────────────────────────────────────────────────────
     now = now_local()
-    closest_idx = (df_bt["forecast_time_local"] - now).abs().argsort().iloc[0]
-    row = df_bt.iloc[closest_idx]
-    k1,k2,k3,k4,k5 = st.columns(5)
+    closest_idx = (df_f["forecast_time_local"] - now).abs().argsort().iloc[0]
+    row = df_f.iloc[closest_idx]
+    colors_map = {"green":"#2ECC71","yellow":"#F1C40F","orange":"#E67E22","red":"#E74C3C"}
+
+    k1,k2,k3,k4,k5,k6 = st.columns(6)
     for col_w, height, g_col, label in [
         (k1,"10m","RafaleV10_Km/h","Rafales 10m"),
         (k2,"22m","RafaleV22_Km/h","Rafales 22m"),
         (k3,"60m","RafaleV60_Km/h","Rafales 60m"),
         (k4,"70m","RafaleV70_Km/h","Rafales 70m"),
     ]:
-        v = row[g_col] if g_col in row else 0
+        v = float(row.get(g_col, 0) or 0)
         lvl, lbl2 = bt_get_alert(v, height)
-        colors_map = {"green":"#2ECC71","yellow":"#F1C40F","orange":"#E67E22","red":"#E74C3C"}
         with col_w:
             st.markdown(f"""
-            <div class='kpi-card' style='border-top:3px solid {colors_map[lvl]};'>
+            <div class='kpi-card' style='border-top:3px solid {colors_map[lvl]};text-align:center;'>
                 <div class='kpi-label'>{label}</div>
                 <div class='kpi-value'>{v:.0f}</div>
                 <div class='kpi-unit'>km/h · {lbl2}</div>
             </div>""", unsafe_allow_html=True)
     with k5:
+        t_val = float(row.get("T(°C)", 0) or 0)
         st.markdown(f"""
-        <div class='kpi-card'>
-            <div class='kpi-label'>T°C</div>
-            <div class='kpi-value'>{row["T(°C)"]:.1f}</div>
+        <div class='kpi-card' style='text-align:center;'>
+            <div class='kpi-label'>🌡️ T°C</div>
+            <div class='kpi-value'>{t_val:.1f}</div>
             <div class='kpi-unit'>°C</div>
+        </div>""", unsafe_allow_html=True)
+    with k6:
+        wx = str(row.get("Temps_sensible","—"))
+        icon = BT_WX_ICONS.get(wx, "🌤️")
+        st.markdown(f"""
+        <div class='kpi-card' style='text-align:center;'>
+            <div class='kpi-label'>Temps</div>
+            <div class='kpi-value'>{icon}</div>
+            <div class='kpi-unit' style='font-size:0.65rem;'>{wx}</div>
         </div>""", unsafe_allow_html=True)
 
     st.markdown("---")
 
-    # Graphiques vent
-    st.markdown("### 📊 Vent par niveau")
-    c1,c2 = st.columns(2)
-    with c1:
-        st.plotly_chart(bt_plot_wind(df_bt,"10m","V10m_Km/h","RafaleV10_Km/h"), use_container_width=True)
-        st.plotly_chart(bt_plot_wind(df_bt,"60m","V60m_Km/h","RafaleV60_Km/h"), use_container_width=True)
-    with c2:
-        st.plotly_chart(bt_plot_wind(df_bt,"22m","V22m_Km/h","RafaleV22_Km/h"), use_container_width=True)
-        st.plotly_chart(bt_plot_wind(df_bt,"70m","V70m_Km/h","RafaleV70_Km/h"), use_container_width=True)
+    # ── Onglets ───────────────────────────────────────────────────────────────
+    tab1, tab2, tab3, tab4 = st.tabs(["🌤️ Météo", "💨 Vent", "📋 Données", "💾 Export"])
 
-    # T°C + Pluie
-    fig_tp = make_subplots(specs=[[{"secondary_y":True}]])
-    x = df_bt["forecast_time_local"].dt.strftime("%d/%m %H:%M")
-    fig_tp.add_trace(go.Scatter(x=x, y=df_bt["T(°C)"], name="T°C",
-        line=dict(color="#FF6B6B",width=2), mode="lines+markers"), secondary_y=False)
-    fig_tp.add_trace(go.Bar(x=x, y=df_bt["Pluie(mm)"], name="Pluie (mm)",
-        marker_color="rgba(100,181,246,0.6)"), secondary_y=True)
-    fig_tp.update_layout(
-        title=dict(text="🌡️ Température & Pluie", font=dict(size=12, color="white")),
-        paper_bgcolor="#0E1117", plot_bgcolor="#161B2E",
-        font=dict(color="white",size=9), height=260,
-        margin=dict(l=50,r=80,t=35,b=55),
-        legend=dict(orientation="h",y=-0.3,font=dict(size=8)),
-        xaxis=dict(gridcolor="#2a2a3a",tickangle=-45,tickfont=dict(size=7)),
-        hovermode="x unified",
-    )
-    fig_tp.update_yaxes(title_text="T (°C)", gridcolor="#2a2a3a", secondary_y=False)
-    fig_tp.update_yaxes(title_text="Pluie (mm)", secondary_y=True)
-    st.plotly_chart(fig_tp, use_container_width=True)
+    # ── Onglet Météo ─────────────────────────────────────────────────────────
+    with tab1:
+        x = df_f["forecast_time_local"].dt.strftime("%d/%m %H:%M")
 
-    # Tableau
-    st.markdown("### 📋 Tableau récapitulatif")
-    disp = df_bt.copy()
-    disp["forecast_time_local"] = disp["forecast_time_local"].dt.strftime("%d/%m %H:%M")
-    for col in ["V10m_Km/h","RafaleV10_Km/h","V22m_Km/h","RafaleV22_Km/h",
-                "V60m_Km/h","RafaleV60_Km/h","V70m_Km/h","RafaleV70_Km/h"]:
-        if col in disp.columns: disp[col] = disp[col].round(1)
-    if "T(°C)" in disp.columns: disp["T(°C)"] = disp["T(°C)"].round(1)
-    if "Pluie(mm)" in disp.columns: disp["Pluie(mm)"] = disp["Pluie(mm)"].round(3)
+        # T°C
+        fig_t = go.Figure()
+        fig_t.add_trace(go.Scatter(x=x, y=df_f["T(°C)"], name="T°C",
+            line=dict(color="#FF6B6B",width=2.5), mode="lines+markers", marker=dict(size=5)))
+        fig_t.update_layout(
+            title=dict(text="🌡️ Température (°C)", font=dict(size=12,color="white")),
+            paper_bgcolor="#0E1117", plot_bgcolor="#161B2E",
+            font=dict(color="white",size=9), height=260,
+            margin=dict(l=50,r=30,t=40,b=55),
+            yaxis=dict(title="°C", gridcolor="#2a2a3a"),
+            xaxis=dict(gridcolor="#2a2a3a", tickangle=-45, tickfont=dict(size=7)),
+            hovermode="x unified",
+        )
+        st.plotly_chart(fig_t, use_container_width=True)
 
-    def style_bt(row):
-        styles = [""] * len(row)
-        cols = list(disp.columns)
-        for col_name, height in [("RafaleV10_Km/h","10m"),("RafaleV22_Km/h","22m"),
-                                  ("RafaleV60_Km/h","60m"),("RafaleV70_Km/h","70m")]:
-            if col_name in cols:
-                idx = cols.index(col_name)
-                lvl, _ = bt_get_alert(row[col_name], height)
-                cmap = {"green":"background-color:#1a3a2a;color:#2ECC71",
-                        "yellow":"background-color:#3a3a1a;color:#F1C40F",
-                        "orange":"background-color:#3a2a1a;color:#E67E22",
-                        "red":"background-color:#3a1a1a;color:#E74C3C"}
-                styles[idx] = cmap[lvl]
-        return styles
+        # Pluie % + Visibilité
+        c_m1, c_m2 = st.columns(2)
+        with c_m1:
+            fig_p = go.Figure()
+            pluie_col = "Pluie(%)" if "Pluie(%)" in df_f.columns else "Pluie(mm)"
+            fig_p.add_trace(go.Bar(x=x, y=df_f[pluie_col],
+                marker_color="rgba(100,181,246,0.7)", name="Pluie (%)"))
+            fig_p.update_layout(
+                title=dict(text="🌧️ Probabilité de pluie (%)", font=dict(size=12,color="white")),
+                paper_bgcolor="#0E1117", plot_bgcolor="#161B2E",
+                font=dict(color="white",size=9), height=250,
+                margin=dict(l=50,r=30,t=40,b=55),
+                yaxis=dict(title="%", gridcolor="#2a2a3a", range=[0,110]),
+                xaxis=dict(gridcolor="#2a2a3a", tickangle=-45, tickfont=dict(size=7)),
+            )
+            st.plotly_chart(fig_p, use_container_width=True)
+        with c_m2:
+            if "Visibilite_km" in df_f.columns:
+                fig_v = go.Figure()
+                fig_v.add_trace(go.Scatter(x=x, y=df_f["Visibilite_km"], name="Visibilité",
+                    line=dict(color="#A9CCE3",width=2), mode="lines+markers", marker=dict(size=5),
+                    fill="tozeroy", fillcolor="rgba(169,204,227,0.15)"))
+                fig_v.update_layout(
+                    title=dict(text="👁️ Visibilité minimale (km)", font=dict(size=12,color="white")),
+                    paper_bgcolor="#0E1117", plot_bgcolor="#161B2E",
+                    font=dict(color="white",size=9), height=250,
+                    margin=dict(l=50,r=30,t=40,b=55),
+                    yaxis=dict(title="km", gridcolor="#2a2a3a"),
+                    xaxis=dict(gridcolor="#2a2a3a", tickangle=-45, tickfont=dict(size=7)),
+                )
+                st.plotly_chart(fig_v, use_container_width=True)
 
-    st.dataframe(disp.style.apply(style_bt, axis=1), use_container_width=True, height=380)
+        # Temps sensible — pictogrammes
+        if "Temps_sensible" in df_f.columns:
+            st.markdown("#### 🌤️ Temps sensible")
+            n_cols = min(len(df_f), 7)
+            cols_wx = st.columns(n_cols)
+            for i, (_, r) in enumerate(df_f.iterrows()):
+                if i >= n_cols: break
+                wx_val = str(r.get("Temps_sensible","—"))
+                icon   = BT_WX_ICONS.get(wx_val, "🌤️")
+                heure  = pd.to_datetime(r["forecast_time_local"]).strftime("%d/%m\n%Hh")
+                with cols_wx[i]:
+                    st.markdown(f"""
+                    <div style='text-align:center;background:#1E2130;border-radius:8px;
+                                padding:8px 4px;margin:2px;'>
+                        <div style='font-size:1.6rem;'>{icon}</div>
+                        <div style='font-size:0.6rem;color:#adb5bd;white-space:pre-line;'>{heure}</div>
+                        <div style='font-size:0.55rem;color:#7fb3d3;'>{wx_val[:12]}</div>
+                    </div>""", unsafe_allow_html=True)
 
-    # Légende seuils
-    st.markdown("### 📌 Seuils d'alerte rafales (km/h)")
-    cl1, cl2 = st.columns(2)
-    with cl1:
-        st.markdown("| Hauteur | 🟢 Vert | 🟡 Jaune | 🟠 Orange | 🔴 Rouge |\n|--|--|--|--|--|\n| 10m | ≤28 | 29–49 | 50–74 | ≥75 |\n| 22m | ≤33 | 34–57 | 58–86 | ≥87 |")
-    with cl2:
-        st.markdown("| Hauteur | 🟢 Vert | 🟡 Jaune | 🟠 Orange | 🔴 Rouge |\n|--|--|--|--|--|\n| 60m | ≤40 | 41–70 | 71–107 | ≥107 |\n| 70m | ≤40 | 42–72 | 73–109 | ≥110 |")
+    # ── Onglet Vent ──────────────────────────────────────────────────────────
+    with tab2:
+        # 4 graphiques vent
+        c1, c2 = st.columns(2)
+        with c1:
+            st.plotly_chart(bt_plot_wind(df_f,"10m","V10m_Km/h","RafaleV10_Km/h"),
+                           use_container_width=True)
+            st.plotly_chart(bt_plot_wind(df_f,"60m","V60m_Km/h","RafaleV60_Km/h"),
+                           use_container_width=True)
+        with c2:
+            st.plotly_chart(bt_plot_wind(df_f,"22m","V22m_Km/h","RafaleV22_Km/h"),
+                           use_container_width=True)
+            st.plotly_chart(bt_plot_wind(df_f,"70m","V70m_Km/h","RafaleV70_Km/h"),
+                           use_container_width=True)
+
+        # 4 roses des vents
+        st.markdown("#### 🌹 Roses des vents")
+        r1, r2, r3, r4 = st.columns(4)
+        with r1:
+            st.plotly_chart(bt_make_wind_rose(df_f,"V10m_Dir","V10m_Km/h","Rose 10m"),
+                           use_container_width=True)
+        with r2:
+            st.plotly_chart(bt_make_wind_rose(df_f,"V22m_Dir","V22m_Km/h","Rose 22m"),
+                           use_container_width=True)
+        with r3:
+            st.plotly_chart(bt_make_wind_rose(df_f,"V60m_Dir","V60m_Km/h","Rose 60m"),
+                           use_container_width=True)
+        with r4:
+            st.plotly_chart(bt_make_wind_rose(df_f,"V70m_Dir","V70m_Km/h","Rose 70m"),
+                           use_container_width=True)
+
+        # Légende seuils
+        st.markdown("#### 📌 Seuils d'alerte rafales (km/h)")
+        sl1, sl2 = st.columns(2)
+        with sl1:
+            st.markdown("| Hauteur | 🟢 Vert | 🟡 Jaune | 🟠 Orange | 🔴 Rouge |\n|--|--|--|--|--|\n| 10m | ≤28 | 29–49 | 50–74 | ≥75 |\n| 22m | ≤33 | 34–57 | 58–86 | ≥87 |")
+        with sl2:
+            st.markdown("| Hauteur | 🟢 Vert | 🟡 Jaune | 🟠 Orange | 🔴 Rouge |\n|--|--|--|--|--|\n| 60m | ≤40 | 41–70 | 71–107 | ≥107 |\n| 70m | ≤40 | 42–72 | 73–109 | ≥110 |")
+
+    # ── Onglet Données ───────────────────────────────────────────────────────
+    with tab3:
+        st.markdown("### 📋 Tableau complet")
+        disp = df_f.copy()
+        disp["forecast_time_local"] = disp["forecast_time_local"].dt.strftime("%d/%m %H:%M")
+        for col in ["V10m_Km/h","RafaleV10_Km/h","V22m_Km/h","RafaleV22_Km/h",
+                    "V60m_Km/h","RafaleV60_Km/h","V70m_Km/h","RafaleV70_Km/h"]:
+            if col in disp.columns: disp[col] = disp[col].round(1)
+        if "T(°C)" in disp.columns: disp["T(°C)"] = disp["T(°C)"].round(1)
+
+        def style_bt(row):
+            styles = [""] * len(row)
+            cols_d = list(disp.columns)
+            cmap = {"green":"background-color:#1a3a2a;color:#2ECC71",
+                    "yellow":"background-color:#3a3a1a;color:#F1C40F",
+                    "orange":"background-color:#3a2a1a;color:#E67E22",
+                    "red":"background-color:#3a1a1a;color:#E74C3C"}
+            for col_name, height in [("RafaleV10_Km/h","10m"),("RafaleV22_Km/h","22m"),
+                                      ("RafaleV60_Km/h","60m"),("RafaleV70_Km/h","70m")]:
+                if col_name in cols_d:
+                    idx = cols_d.index(col_name)
+                    lvl, _ = bt_get_alert(float(row[col_name] or 0), height)
+                    styles[idx] = cmap[lvl]
+            return styles
+
+        st.dataframe(disp.style.apply(style_bt, axis=1),
+                     use_container_width=True, height=420)
+
+    # ── Onglet Export ────────────────────────────────────────────────────────
+    with tab4:
+        st.markdown("### 💾 Export des données")
+        exp = df_f.copy()
+        exp["forecast_time_local"] = exp["forecast_time_local"].dt.strftime("%Y-%m-%d %H:%M")
+        fname = f"BeninTerminal_{now_local().strftime('%d%m%Y_%H%M')}.csv"
+        st.download_button("⬇️ Télécharger CSV filtré",
+            data=exp.to_csv(index=False).encode("utf-8"),
+            file_name=fname, mime="text/csv")
+
+    # Footer
+    st.markdown("""
+    <div style='text-align:center;color:#4a6480;font-size:0.68rem;margin-top:2rem;
+                padding:1rem 0;border-top:1px solid rgba(46,117,182,0.15);'>
+        © 2026 · LAOUROU MAKONDJOU DIANE · Météorologiste & Data Scientist · METEO-BENIN / DPROM / SPAM<br>
+        Source : ECMWF Open Data via Google Earth Engine
+    </div>""", unsafe_allow_html=True)
 
 
 if __name__ == "__main__":

@@ -2086,8 +2086,11 @@ def render_benin_terminal():
             """)
             exp_full = df_bt.copy()
             exp_full["forecast_time_local"] = exp_full["forecast_time_local"].dt.strftime("%Y-%m-%d %H:%M")
-            date_str = now_local().strftime("%d%m%Y_%H%M")
-            fname_corr = f"ECMWF_Port_{date_str}.csv"
+            # Nom automatique depuis la date/heure du premier pas du bulletin
+            first_dt = df_bt["forecast_time_local"].min()
+            date_str = first_dt.strftime("%d%m%Y")
+            hour_str = first_dt.strftime("%H00")
+            fname_corr = f"ECMWF_Port_{date_str}_{hour_str}.csv"
             st.download_button(
                 "⬇️ Télécharger CSV corrigé complet (à publier sur GitHub)",
                 data=exp_full.to_csv(index=False).encode("utf-8"),

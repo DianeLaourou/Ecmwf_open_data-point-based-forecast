@@ -1884,9 +1884,12 @@ def render_benin_terminal():
         # ── Graphique T°C seul + pictogrammes au-dessus ──────────────────
         fig_meteo = go.Figure()
 
+        # Interpoler les valeurs manquantes T°C
+        t_series = df_f["T(°C)"].copy().interpolate(method="linear", limit_direction="both")
+
         # Courbe température
         fig_meteo.add_trace(go.Scatter(
-            x=x, y=df_f["T(°C)"],
+            x=x, y=t_series,
             name="T°C",
             line=dict(color="#FF6B6B", width=2.5),
             mode="lines+markers",
@@ -1901,7 +1904,7 @@ def render_benin_terminal():
             for i, (_, r) in enumerate(df_f.iterrows()):
                 wx_val = str(r.get("Temps_sensible", ""))
                 icon   = BT_WX_ICONS.get(wx_val, "🌤️")
-                t_val  = float(r.get("T(°C)", 0) or 0)
+                t_val  = float(t_series.iloc[i] if hasattr(t_series, 'iloc') else 0)
                 fig_meteo.add_annotation(
                     x=x.iloc[i] if hasattr(x, "iloc") else x[i],
                     y=t_val,

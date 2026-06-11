@@ -69,7 +69,7 @@ def render_login():
         st.markdown("### 🔐 Connexion")
         username = st.text_input("Identifiant", placeholder="Votre identifiant", key="login_user")
         password = st.text_input("Mot de passe", type="password", key="login_pwd")
-        if st.button("Se connecter", use_container_width=True, type="primary"):
+        if st.button("Se connecter", width='stretch', type="primary"):
             users = _get_users()
             user  = users.get(username.lower())
             if user and _hash(password) == user["hash"]:
@@ -923,7 +923,7 @@ def render_sidebar():
                 {"🔑 Admin" if user_role=="admin" else "👁️ Visualisation"}
             </span>
         </div>""", unsafe_allow_html=True)
-        if st.button("🚪 Déconnexion", use_container_width=True, key="logout_btn"):
+        if st.button("🚪 Déconnexion", width='stretch', key="logout_btn"):
             for k in ["authenticated","user_name","user_role","user_points",
                       "username","point","df_session","bt_df","df_loaded"]:
                 st.session_state.pop(k, None)
@@ -1256,7 +1256,7 @@ def render_main_tabs(df, df_filtered, params):
                 xaxis=dict(gridcolor="#2a2a3a", tickangle=-45, tickfont=dict(size=8)),
                 hovermode="x unified", showlegend=False,
             )
-            st.plotly_chart(fig_t2m, use_container_width=True)
+            st.plotly_chart(fig_t2m, width='stretch')
 
         # ── Autres variables météo (MSLP, pluie, visibilité) ─────────────
         _opt_labels = {
@@ -2011,13 +2011,13 @@ def parse_alerte_pdf(pdf_bytes):
         elif "orange" in ft: niveau = "orange"
         else:                niveau = "jaune"
         # Diffusion
-        m_diff = re.search("Diffusion\s*:\s*([^\n]+)", full_text)
+        m_diff = re.search(r"Diffusion\s*:\s*([^\n]+)", full_text)
         diffusion = m_diff.group(1).strip() if m_diff else "---"
         # Validite — pattern qui fonctionne
-        m_val = re.search("Validit.+?(\w+\s+\d+\s+\w+\s+\d{4}\s+.+?H\d{2})", full_text, re.IGNORECASE)
+        m_val = re.search(r"Validit.+?(\w+\s+\d+\s+\w+\s+\d{4}\s+.+?H\d{2})", full_text, re.IGNORECASE)
         validite = m_val.group(1).strip() if m_val else "---"
         # Texte principal
-        m_texte = re.search("(Une [^.]+\.[^.]+\.)", full_text)
+        m_texte = re.search(r"(Une [^.]+\.[^.]+\.)", full_text)
         texte = m_texte.group(1).strip() if m_texte else " ".join(full_text.split()[20:60])
         return {"niveau": niveau, "diffusion": diffusion,
                 "validite": validite, "texte": texte}
@@ -2173,7 +2173,7 @@ def render_benin_terminal():
                 st.caption(f"📄 `{fname_bt}`")
                 col_pub, col_dl = st.columns(2)
                 with col_pub:
-                    if st.button("🚀 Publier", type="primary", use_container_width=True, key="bt_publish_btn"):
+                    if st.button("🚀 Publier", type="primary", width='stretch', key="bt_publish_btn"):
                         df_pub = st.session_state["bt_df"].copy()
                         df_pub["forecast_time_local"] = pd.to_datetime(
                             df_pub["forecast_time_local"]).dt.strftime("%Y-%m-%d %H:%M")
@@ -2400,7 +2400,7 @@ def render_benin_terminal():
             hovermode="x unified",
             showlegend=False,
         )
-        st.plotly_chart(fig_meteo, use_container_width=True)
+        st.plotly_chart(fig_meteo, width='stretch')
 
         # ── Pluie + Visibilité combinées ─────────────────────────────────
         if "Visibilite_km" in df_f.columns:
@@ -2445,7 +2445,7 @@ def render_benin_terminal():
                 color="#4FC3F7", gridcolor="rgba(0,0,0,0)",
                 range=[0, (_pluie.max() or 100) * 1.3],
             )
-            st.plotly_chart(fig_pv, use_container_width=True)
+            st.plotly_chart(fig_pv, width='stretch')
 
     # ── Onglet Vent ──────────────────────────────────────────────────────────
     with tab2:
@@ -2465,7 +2465,7 @@ def render_benin_terminal():
                 # Mettre à jour les labels X dans la figure
                 for trace in fig_w.data:
                     trace.x = list(x_w)
-                st.plotly_chart(fig_w, use_container_width=True)
+                st.plotly_chart(fig_w, width='stretch')
             with col_rose:
                 st.plotly_chart(
                     bt_make_wind_rose(df_f, dir_col, v_col, f"Rose {height}"),

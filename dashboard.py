@@ -2171,6 +2171,13 @@ def render_benin_terminal():
                 fname_bt = st.session_state.get("bt_fname",
                     f"ECMWF_Port_{pd.to_datetime(st.session_state['bt_df']['forecast_time_local']).min().strftime('%d%m%Y_%H00')}.csv")
                 st.caption(f"📄 `{fname_bt}`")
+                # Vérifier si corrections PDF appliquées
+                _has_wx = "Temps_sensible" in st.session_state["bt_df"].columns
+                _wx_ok  = st.session_state["bt_df"]["Temps_sensible"].notna().any() if _has_wx else False
+                if _wx_ok:
+                    st.success("✅ Corrections PDF appliquées")
+                else:
+                    st.warning("⚠️ Pas encore de corrections PDF")
                 col_pub, col_dl = st.columns(2)
                 with col_pub:
                     if st.button("🚀 Publier", type="primary", use_container_width=True, key="bt_publish_btn"):

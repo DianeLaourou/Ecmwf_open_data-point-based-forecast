@@ -2164,6 +2164,80 @@ def render_benin_terminal():
                 st.caption("⚠️ Chargez d'abord le CSV (étape 1)")
             st.divider()
 
+            # ÉTAPE 4 — Gestion alerte spéciale
+            st.markdown("**④ ⚠️ Alerte spéciale**")
+
+            # Vérifier si une alerte est active
+            _alerte_active = False
+            _alerte_fname_active = None
+            try:
+                import requests as _rq2
+                _tree = _rq2.get(
+                    f"https://api.github.com/repos/{GITHUB_OWNER}/{GITHUB_REPO_BT}/contents/{GITHUB_FOLDER_TERMINAL}",
+                    timeout=5
+                ).json()
+                _alertes = [f for f in _tree if isinstance(f,dict)
+                            and f.get("name","").startswith("ALERTE_")
+                            and f.get("name","").endswith(".pdf")]
+                if _alertes:
+                    _alerte_active = True
+                    _alerte_fname_active = _alertes[0]["name"]
+                    st.warning(f"🔴 Alerte active : `{_alerte_fname_active}`")
+            except Exception:
+                pass
+
+            if not _alerte_active:
+                # Upload PDF alerte
+                alerte_pdf = st.file_uploader(
+                    "Publier un bulletin d'alerte (PDF)",
+                    type=["pdf"], key="bt_alerte_uploader"
+                )
+                if alerte_pdf:
+                    from datetime import datetime as _dt2
+                    _aname = f"ALERTE_BeninTerminal_{_dt2.now().strftime('%d%m%Y')}.pdf"
+                    if st.button("⚠️ Publier l'alerte", type="primary",
+                                 use_container_width=True, key="bt_alerte_pub"):
+                        ok, msg = publish_to_github(
+                            alerte_pdf.read(), _aname,
+                            GITHUB_FOLDER_TERMINAL,
+                            f"alerte: bulletin spécial Bénin Terminal {_aname}"
+                        )
+                        if ok:
+                            st.success(f"✅ Alerte publiée — clients notifiés au rechargement")
+                            st.rerun()
+                        else:
+                            st.error(f"❌ {msg}")
+            else:
+                # Bouton lever alerte
+                if st.button("🔕 Lever l'alerte", type="secondary",
+                             use_container_width=True, key="bt_alerte_lever"):
+                    # Supprimer le fichier ALERTE sur GitHub
+                    try:
+                        import requests as _rq3, base64 as _b64
+                        token = ""
+                        try: token = st.secrets["GITHUB_TOKEN"]
+                        except Exception: pass
+                        headers = {
+                            "Authorization": f"token {token}",
+                            "Accept": "application/vnd.github.v3+json",
+                        }
+                        api_url = (f"https://api.github.com/repos/{GITHUB_OWNER}/"
+                                   f"{GITHUB_REPO_BT}/contents/{GITHUB_FOLDER_TERMINAL}/"
+                                   f"{_alerte_fname_active}")
+                        r_get = _rq3.get(api_url, headers=headers, timeout=10)
+                        sha = r_get.json().get("sha","")
+                        r_del = _rq3.delete(api_url, headers=headers,
+                                            json={"message": f"alerte levée: {_alerte_fname_active}",
+                                                  "sha": sha}, timeout=15)
+                        if r_del.status_code in [200, 204]:
+                            st.success("✅ Alerte levée — dashboard revenu à l'état normal")
+                            st.rerun()
+                        else:
+                            st.error(f"❌ {r_del.json().get('message','Erreur')}")
+                    except Exception as e:
+                        st.error(f"❌ {e}")
+            st.divider()
+
         # Chargement données
         if "bt_df" in st.session_state:
             df_bt = st.session_state["bt_df"]

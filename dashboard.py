@@ -1563,7 +1563,10 @@ def bt_global_alert(df):
                         "h":   h,
                         "col": col,
                         "val": v,
-                        "time": t.strftime("%a %d/%m à %Hh")
+                        "time": (
+                            ["Lun","Mar","Mer","Jeu","Ven","Sam","Dim"][t.weekday()]
+                            + t.strftime(" %d/%m à %Hh")
+                        )
                     }
                 except Exception:
                     pass
@@ -1711,8 +1714,9 @@ def bt_generate_demo():
 
 def read_bt_pdf_corrections(pdf_bytes):
     """
-    Lit le PDF bulletin Bénin Terminal.
-    Gere les decalages de colonnes entre pages et les valeurs "> 10".
+    Lit le PDF bulletin Benin Terminal.
+    Page 1 : col16=T°C, col17+18=Temps sensible, col20=Pluie, col21=Visibilite
+    Page 2 : col13=rafale70m, col16=rafale70m, col17=T°C, col18=Temps sensible
     """
     import pdfplumber, io, re, unicodedata
 
@@ -1726,7 +1730,7 @@ def read_bt_pdf_corrections(pdf_bytes):
         WX = [
             (["ensoleill"],                        "Ensoleillé"),
             (["peu nuageux"],                      "Peu nuageux"),
-            (["modere","modera","mode r","moderement"], "Modérément nuageux"),
+            (["modere","modera","mode r","moderement","modérément"], "Modérément nuageux"),
             (["assez nuageux"],                    "Assez nuageux"),
             (["couvert"],                          "Couvert"),
             (["orages et pluies","orages"],        "Orages et pluies"),
@@ -1742,7 +1746,7 @@ def read_bt_pdf_corrections(pdf_bytes):
         return None
 
     def safe_float(cell):
-        s = re.sub(r"[><>=<]", "", str(cell or "")).strip().replace(",",".")
+        s = re.sub(r"[><>=<≥≤]", "", str(cell or "")).strip().replace(",",".")
         try: return float(s)
         except: return None
 
@@ -1751,10 +1755,18 @@ def read_bt_pdf_corrections(pdf_bytes):
         return any(k in t for k in ["nuageux","pluies","orages","couvert",
                                      "ensoleill","brume","poussi","averses"])
 
+    def is_dir(s):
+        """Vrai si c'est une direction cardinale."""
+        return str(s or "").strip().upper() in [
+            "N","NNE","NE","ENE","E","ESE","SE","SSE",
+            "S","SSO","SO","OSO","O","ONO","NO","NNO",
+            "SSW","SW","WSW","W","WNW","NW","NNW"
+        ]
+
     rows = []
     try:
         with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
-            for page in pdf.pages:
+            for pi, page in enumerate(pdf.pages):
                 for table in page.extract_tables():
                     for row in table:
                         if not row or len(row) < 18:
@@ -1763,6 +1775,8 @@ def read_bt_pdf_corrections(pdf_bytes):
                         if not re.match(r"[0-9]{1,2}h", heure):
                             continue
 
+                        c13 = str(row[13] or "").strip()
+                        c14 = str(row[14] or "").strip()
                         c16 = str(row[16] or "").strip()
                         c17 = str(row[17] or "").strip()
                         c18 = str(row[18] or "").strip()
@@ -1770,28 +1784,42 @@ def read_bt_pdf_corrections(pdf_bytes):
                         t_val  = None
                         wx_val = None
 
-                        t16 = safe_float(c16)
-                        t17 = safe_float(c17)
+                        # Détecter le type de page par col14
+                        # Page 1 : col14 = vitesse vent 70m (entier ~5-35)
+                        #          col13 = direction (SO, S...)
+                        # Page 2 : col13 = rafale (entier ~15-40)
+                        #          col14 = direction (SO, S...)
+                        if is_dir(c13) and not is_dir(c14):
+                            # Page 1 : col16=T°C, col17+18=Temps
+                            t16 = safe_float(c16)
+                            if t16 is not None and 15 <= t16 <= 36:
+                                t_val = t16
+                            wx_val = map_wx((c17 + " " + c18).replace("\n"," "))
 
-                        if t16 is not None and 15 <= t16 <= 45 and not is_wx(c17):
-                            t_val  = t16
-                            wx_raw = (c17 + " " + c18).replace("\n"," ")
-                            wx_val = map_wx(wx_raw)
-                        elif t17 is not None and 15 <= t17 <= 45 and is_wx(c18):
-                            t_val  = t17
+                        elif is_dir(c14) and not is_dir(c13):
+                            # Page 2 : col17=T°C, col18=Temps
+                            t17 = safe_float(c17)
+                            if t17 is not None and 15 <= t17 <= 36:
+                                t_val = t17
                             wx_val = map_wx(c18.replace("\n"," "))
-                        elif c16 == "" and t17 is not None and 15 <= t17 <= 45:
-                            t_val  = t17
-                            wx_val = map_wx(c18.replace("\n"," "))
+
                         else:
-                            t_val  = t16 if (t16 and 15 <= t16 <= 45) else None
-                            wx_raw = (c17 + " " + c18).replace("\n"," ")
-                            wx_val = map_wx(wx_raw)
+                            # Fallback : essayer col16 puis col17
+                            t16 = safe_float(c16)
+                            t17 = safe_float(c17)
+                            if t16 is not None and 15 <= t16 <= 36 and not is_wx(c17):
+                                t_val  = t16
+                                wx_val = map_wx((c17+" "+c18).replace("\n"," "))
+                            elif t17 is not None and 15 <= t17 <= 36 and is_wx(c18):
+                                t_val  = t17
+                                wx_val = map_wx(c18.replace("\n"," "))
 
+                        # Pluie % col20
                         pluie_val = safe_float(row[20]) if len(row) > 20 else None
                         if pluie_val is not None and not (0 <= pluie_val <= 100):
                             pluie_val = None
 
+                        # Visibilite col21 — gere "> 10"
                         vis_raw = str(row[21] or "").strip() if len(row) > 21 else ""
                         vis_val = safe_float(vis_raw)
                         if vis_val is not None and not (1 <= vis_val <= 50):

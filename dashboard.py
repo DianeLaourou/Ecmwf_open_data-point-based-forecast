@@ -1543,20 +1543,42 @@ def bt_get_alert(val, height):
     return "red", "🔴 Rouge"
 
 def bt_global_alert(df):
-    """Niveau d'alerte global Bénin Terminal."""
+    """Niveau d'alerte global Bénin Terminal avec date/heure et niveau concerné."""
     levels = {"green":0,"yellow":1,"orange":2,"red":3}
     mx = 0
+    mx_info = {"h":"—", "col":"—", "val":0, "time":"—"}
+
     for h, col in [("10m","RafaleV10_Km/h"),("22m","RafaleV22_Km/h"),
                    ("60m","RafaleV60_Km/h"),("70m","RafaleV70_Km/h")]:
-        if col in df.columns:
-            for v in df[col].dropna():
-                lvl, _ = bt_get_alert(v, h)
-                mx = max(mx, levels[lvl])
+        if col not in df.columns:
+            continue
+        for idx, v in zip(df.index, df[col]):
+            if pd.isna(v): continue
+            lvl, _ = bt_get_alert(v, h)
+            if levels[lvl] > mx:
+                mx = levels[lvl]
+                try:
+                    t = pd.to_datetime(df.loc[idx, "forecast_time_local"])
+                    mx_info = {
+                        "h":   h,
+                        "col": col,
+                        "val": v,
+                        "time": t.strftime("%a %d/%m à %Hh")
+                    }
+                except Exception:
+                    pass
+
+    descs = {
+        0: "Conditions favorables aux opérations portuaires.",
+        1: f"Pic prévu le {mx_info['time']} — Rafales {mx_info['val']:.0f} km/h à {mx_info['h']}.",
+        2: f"Pic prévu le {mx_info['time']} — Rafales {mx_info['val']:.0f} km/h à {mx_info['h']}. Opérations à évaluer.",
+        3: f"Pic prévu le {mx_info['time']} — Rafales {mx_info['val']:.0f} km/h à {mx_info['h']}. Arrêt recommandé.",
+    }
     labels = {
-        0: ("🟢 Vert",   "warning-none",   "Conditions favorables aux opérations portuaires."),
-        1: ("🟡 Jaune",  "warning-yellow",  "Vigilance recommandée — surveiller l'évolution."),
-        2: ("🟠 Orange", "warning-yellow",  "Conditions difficiles — opérations à évaluer."),
-        3: ("🔴 Rouge",  "warning-red",     "Opérations dangereuses — arrêt recommandé."),
+        0: ("🟢 Vert",   "warning-none",   descs[0]),
+        1: ("🟡 Jaune",  "warning-yellow",  descs[1]),
+        2: ("🟠 Orange", "warning-yellow",  descs[2]),
+        3: ("🔴 Rouge",  "warning-red",     descs[3]),
     }
     return labels[mx]
 

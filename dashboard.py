@@ -1938,6 +1938,41 @@ def read_seme_pdf_corrections(pdf_bytes):
         return None, str(e)
 
 
+def publish_to_github(file_content: bytes, filename: str, folder: str, commit_msg: str):
+    """Publie un fichier sur GitHub via l'API."""
+    import requests, base64
+    try:
+        token = st.secrets.get("GITHUB_TOKEN", "")
+        if not token:
+            return False, "GITHUB_TOKEN non configuré dans Streamlit Secrets"
+
+        headers = {
+            "Authorization": f"token {token}",
+            "Accept": "application/vnd.github.v3+json",
+        }
+        path    = f"{folder}/{filename}"
+        api_url = f"https://api.github.com/repos/{GITHUB_OWNER}/{GITHUB_REPO_BT}/contents/{path}"
+
+        # Vérifier si le fichier existe déjà (pour récupérer son sha)
+        r_get = requests.get(api_url, headers=headers, timeout=10)
+        sha   = r_get.json().get("sha") if r_get.status_code == 200 else None
+
+        payload = {
+            "message": commit_msg,
+            "content": base64.b64encode(file_content).decode("utf-8"),
+        }
+        if sha:
+            payload["sha"] = sha
+
+        r_put = requests.put(api_url, headers=headers, json=payload, timeout=15)
+        if r_put.status_code in [200, 201]:
+            return True, filename
+        else:
+            return False, r_put.json().get("message", "Erreur inconnue")
+    except Exception as e:
+        return False, str(e)
+
+
 def check_bt_alerte():
     """
     Vérifie si un fichier ALERTE_*.pdf existe dans data/BeninTerminal/ sur GitHub.
@@ -2069,68 +2104,90 @@ def render_benin_terminal():
         st.divider()
         st.markdown("### ⚓ Bénin Terminal")
 
-        # Upload CSV + PDF — admin uniquement
+        # ── Sidebar admin Bénin Terminal ─────────────────────────────────
         if user_role == "admin":
-            st.markdown("**📂 Bulletin CSV**")
-            bt_file = st.file_uploader("Charger CSV", type=["csv"], key="bt_uploader")
+            # ÉTAPE 1
+            st.markdown("**① 📂 Charger le bulletin CSV**")
+            bt_file = st.file_uploader("CSV Bénin Terminal", type=["csv"], key="bt_uploader")
             if bt_file:
-                df_bt = pd.read_csv(bt_file)
-                df_bt["forecast_time_local"] = pd.to_datetime(df_bt["forecast_time_local"])
+                df_bt_up = pd.read_csv(bt_file)
+                df_bt_up["forecast_time_local"] = pd.to_datetime(df_bt_up["forecast_time_local"])
                 for col, default in [("T(°C)", 28.0), ("Pluie(%)", 10.0),
                                      ("Visibilite_km", 9.0), ("Temps_sensible","Assez nuageux")]:
-                    if col not in df_bt.columns:
-                        df_bt[col] = default
-                st.session_state["bt_df"] = df_bt
-                st.success(f"✅ {len(df_bt)} échéances chargées")
+                    if col not in df_bt_up.columns:
+                        df_bt_up[col] = default
+                st.session_state["bt_df"] = df_bt_up
+                first_dt_up = df_bt_up["forecast_time_local"].min()
+                st.session_state["bt_fname"] = f"ECMWF_Port_{first_dt_up.strftime('%d%m%Y_%H00')}.csv"
+                st.success(f"✅ {len(df_bt_up)} échéances chargées")
 
-            st.markdown("**📄 PDF corrigé**")
-            st.caption("T°C, Temps sensible, Pluie, Visibilité")
-            bt_pdf = st.file_uploader("Charger PDF bulletin", type=["pdf"], key="bt_pdf_uploader")
+            st.divider()
+
+            # ÉTAPE 2
+            st.markdown("**② 📄 Appliquer les corrections PDF**")
+            st.caption("T°C · Temps sensible · Pluie · Visibilité")
+            bt_pdf = st.file_uploader("PDF bulletin corrigé", type=["pdf"], key="bt_pdf_uploader")
             if bt_pdf and "bt_df" in st.session_state:
                 pdf_bytes = bt_pdf.read()
                 df_corr, err = read_bt_pdf_corrections(pdf_bytes)
                 if err:
-                    st.warning(f"⚠️ PDF : {err}")
+                    st.warning(f"⚠️ {err}")
                 elif df_corr is not None:
-                    # Appliquer corrections sur bt_df
                     df_base = st.session_state["bt_df"].copy()
                     n_corr = 0
                     for _, cr in df_corr.iterrows():
                         h_raw = str(cr.get("heure_str","")).strip().lower().replace("h","").zfill(2)
                         mask  = df_base["forecast_time_local"].dt.strftime("%H") == h_raw
                         if mask.any():
-                            if cr["T(°C)"] is not None:
-                                df_base.loc[mask, "T(°C)"] = cr["T(°C)"]
-                            if cr["Temps_sensible"] is not None:
-                                df_base.loc[mask, "Temps_sensible"] = cr["Temps_sensible"]
-                            if cr["Pluie(%)"] is not None:
-                                df_base.loc[mask, "Pluie(%)"] = cr["Pluie(%)"]
-                            if cr["Visibilite_km"] is not None:
-                                df_base.loc[mask, "Visibilite_km"] = cr["Visibilite_km"]
+                            for col_bt, key_bt in [("T(°C)","T(°C)"),("Temps_sensible","Temps_sensible"),
+                                                    ("Pluie(%)","Pluie(%)"),("Visibilite_km","Visibilite_km")]:
+                                try:
+                                    if cr.get(key_bt) is not None:
+                                        df_base.loc[mask, col_bt] = cr[key_bt]
+                                except Exception:
+                                    pass
                             n_corr += 1
                     st.session_state["bt_df"] = df_base
-                    st.success(f"✅ {n_corr} échéances corrigées depuis PDF")
+                    st.success(f"✅ {n_corr} échéances corrigées")
             elif bt_pdf and "bt_df" not in st.session_state:
-                st.warning("⚠️ Chargez d'abord le CSV avant le PDF")
+                st.warning("⚠️ Chargez d'abord le CSV (étape 1)")
 
-            # Bouton export CSV corrigé
-            if "bt_df" in st.session_state:
-                df_exp_bt = st.session_state["bt_df"].copy()
-                df_exp_bt["forecast_time_local"] = pd.to_datetime(
-                    df_exp_bt["forecast_time_local"]).dt.strftime("%Y-%m-%d %H:%M")
-                first_dt_bt = pd.to_datetime(
-                    st.session_state["bt_df"]["forecast_time_local"]).min()
-                fname_bt = f"ECMWF_Port_{first_dt_bt.strftime('%d%m%Y_%H00')}.csv"
-                st.download_button(
-                    "⬇️ CSV corrigé (à publier)",
-                    data=df_exp_bt.to_csv(index=False).encode("utf-8"),
-                    file_name=fname_bt,
-                    mime="text/csv",
-                    type="primary",
-                    key="bt_export_btn",
-                )
-                st.caption("📌 Publier dans `data/BeninTerminal/` sur GitHub")
             st.divider()
+
+            # ÉTAPE 3
+            st.markdown("**③ 🚀 Publier sur GitHub**")
+            if "bt_df" in st.session_state:
+                fname_bt = st.session_state.get("bt_fname",
+                    f"ECMWF_Port_{pd.to_datetime(st.session_state['bt_df']['forecast_time_local']).min().strftime('%d%m%Y_%H00')}.csv")
+                st.caption(f"📄 `{fname_bt}`")
+                col_pub, col_dl = st.columns(2)
+                with col_pub:
+                    if st.button("🚀 Publier", type="primary", use_container_width=True, key="bt_publish_btn"):
+                        df_pub = st.session_state["bt_df"].copy()
+                        df_pub["forecast_time_local"] = pd.to_datetime(
+                            df_pub["forecast_time_local"]).dt.strftime("%Y-%m-%d %H:%M")
+                        csv_bytes = df_pub.to_csv(index=False).encode("utf-8")
+                        ok, msg = publish_to_github(
+                            csv_bytes, fname_bt,
+                            GITHUB_FOLDER_TERMINAL,
+                            f"data: bulletin Bénin Terminal {fname_bt}"
+                        )
+                        if ok:
+                            st.success("✅ Publié ! Clients mis à jour.")
+                            st.session_state["bt_csv_loaded"] = fname_bt
+                        else:
+                            st.error(f"❌ {msg}")
+                with col_dl:
+                    df_dl = st.session_state["bt_df"].copy()
+                    df_dl["forecast_time_local"] = pd.to_datetime(
+                        df_dl["forecast_time_local"]).dt.strftime("%Y-%m-%d %H:%M")
+                    st.download_button("⬇️ CSV", data=df_dl.to_csv(index=False).encode("utf-8"),
+                        file_name=fname_bt, mime="text/csv",
+                        use_container_width=True, key="bt_dl_btn")
+            else:
+                st.caption("⚠️ Chargez d'abord le CSV (étape 1)")
+            st.divider()
+
 
         # Vérifier si nouveau bulletin disponible → vider cache si besoin
         import requests as _req, io as _io

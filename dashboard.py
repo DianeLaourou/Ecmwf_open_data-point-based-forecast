@@ -2250,9 +2250,11 @@ def render_benin_terminal():
         df_bt["forecast_time_local"] = pd.to_datetime(df_bt["forecast_time_local"])
         times  = sorted(df_bt["forecast_time_local"].dt.to_pydatetime().tolist())
         dt_min = times[0]; dt_max = times[-1]
-        _19h   = dt_min.replace(hour=19, minute=0, second=0, microsecond=0)
-        _19h_times = [t for t in times if t >= _19h]
-        _def_start = _19h_times[0] if _19h_times else dt_min
+
+        # Défaut : à partir de maintenant (pas de temps le plus proche)
+        _now = now_local()
+        _future = [t for t in times if t >= _now]
+        _def_start = _future[0] if _future else dt_min
 
         st.markdown("#### 🕐 Période")
         show_past = st.toggle("Voir les échéances passées", value=False, key="bt_show_past")

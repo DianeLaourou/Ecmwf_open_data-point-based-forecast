@@ -2000,6 +2000,24 @@ def render_alerte_banner(alerte_info, pdf_bytes, fname):
     )
 
 
+BT_WX_ICONS = {
+    "Ensoleillé":               "☀️",
+    "Peu nuageux":              "🌤️",
+    "Modérément nuageux":       "⛅",
+    "Assez nuageux":            "🌥️",
+    "Couvert":                  "☁️",
+    "Orages et pluies":         "⛈️",
+    "Averses de fortes pluies": "🌧️",
+    "Averses de pluies faibles":"🌦️",
+    "Averses de pluies":        "🌧️",
+    "Poussière":                "🌫️",
+    "Brume sèche":              "🌫️",
+    "Brouillard/Brume humide":  "🌁",
+}
+
+BT_WX_LIST = list(BT_WX_ICONS.keys())
+
+
 def render_benin_terminal():
     """Affichage complet Bénin Terminal — même architecture que Sème."""
     import plotly.graph_objects as go

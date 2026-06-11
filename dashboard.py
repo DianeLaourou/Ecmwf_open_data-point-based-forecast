@@ -897,15 +897,8 @@ def render_sidebar():
         </div>
         </div>""", unsafe_allow_html=True)
 
-        # ── Sélecteur de langue (en premier) ──────────────────
-        lang_choice = st.radio(
-            "🌐 Langue / Language",
-            ["🇫🇷 Français", "🇬🇧 English"],
-            index=0 if st.session_state.get("lang","FR") == "FR" else 1,
-            horizontal=True,
-            key="lang_radio",
-        )
-        st.session_state["lang"] = "FR" if lang_choice.startswith("🇫🇷") else "EN"
+        # Langue fixe Français
+        st.session_state["lang"] = "FR"
 
         st.divider()
 
@@ -2333,6 +2326,12 @@ def render_benin_terminal():
         _19h   = dt_min.replace(hour=19, minute=0, second=0, microsecond=0)
         _19h_times = [t for t in times if t >= _19h]
         _def_start = _19h_times[0] if _19h_times else dt_min
+
+        # Bouton actualiser pour le client
+        if user_role == "client":
+            if st.button("🔄 Actualiser les données", use_container_width=True, key="bt_refresh"):
+                st.session_state.pop("bt_df", None)
+                st.rerun()
 
         st.markdown("#### 🕐 Période")
         show_past = st.toggle("Voir les échéances passées", value=False, key="bt_show_past")

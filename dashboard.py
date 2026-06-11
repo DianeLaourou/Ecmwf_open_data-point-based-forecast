@@ -1195,7 +1195,7 @@ def render_main_tabs(df, df_filtered, params):
 
         # ── Graphique T°C + pictogrammes weather condition ────────────────
         if "t2m_c" in df_filtered.columns:
-            x_t = df_filtered["valid_local"].dt.strftime("%a %d/%m %Hh")
+            x_t = fmt_x_fr(df_filtered["valid_local"])
             t_series = df_filtered["t2m_c"].copy().interpolate(method="linear", limit_direction="both")
             fig_t2m = go.Figure()
             fig_t2m.add_trace(go.Scatter(
@@ -1606,7 +1606,7 @@ def bt_plot_wind(df, height, v_col, g_col):
     """Graphique vent + rafales avec zones colorées pour Bénin Terminal."""
     import plotly.graph_objects as go
     t = BT_THRESHOLDS[height]
-    x = df["forecast_time_local"].dt.strftime("%a %d/%m %Hh")
+    x = fmt_x_fr(df["forecast_time_local"])
     fig = go.Figure()
     ymax = max(df[g_col].max() * 1.2 if not df[g_col].empty else 50, t["orange"] + 20)
     zones = [
@@ -1640,6 +1640,15 @@ def bt_plot_wind(df, height, v_col, g_col):
         hovermode="x unified",
     )
     return fig
+
+
+def fmt_x_fr(dt_series):
+    """Formate une série datetime en labels français : Lun 11/06 21h"""
+    JOURS = ["Lun","Mar","Mer","Jeu","Ven","Sam","Dim"]
+    return [
+        JOURS[t.weekday()] + t.strftime(" %d/%m %Hh")
+        for t in pd.to_datetime(dt_series)
+    ]
 
 def bt_make_wind_rose(df, dir_col, spd_col, title=None):
     """Rose des vents pour Bénin Terminal (directions en FR, vitesses en km/h)."""
@@ -2417,7 +2426,7 @@ def render_benin_terminal():
     # ── Onglet Météo ─────────────────────────────────────────────────────────
     with tab1:
         # Labels X exacts depuis le CSV
-        x = df_f["forecast_time_local"].dt.strftime("%a %d/%m %Hh")
+        x = fmt_x_fr(df_f["forecast_time_local"])
         pluie_col = "Pluie(%)" if "Pluie(%)" in df_f.columns else "Pluie(mm)"
 
         # ── Graphique T°C seul + pictogrammes au-dessus ──────────────────
@@ -2529,7 +2538,7 @@ def render_benin_terminal():
             col_graph, col_rose = st.columns([3, 1])
             with col_graph:
                 # Labels X exacts
-                x_w = df_f["forecast_time_local"].dt.strftime("%a %d/%m %Hh")
+                x_w = fmt_x_fr(df_f["forecast_time_local"])
                 fig_w = bt_plot_wind(df_f, height, v_col, g_col)
                 # Mettre à jour les labels X dans la figure
                 for trace in fig_w.data:

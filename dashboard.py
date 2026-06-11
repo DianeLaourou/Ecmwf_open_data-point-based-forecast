@@ -1689,91 +1689,93 @@ def bt_generate_demo():
 
 def read_bt_pdf_corrections(pdf_bytes):
     """
-    Lit le PDF bulletin Bénin Terminal et extrait les corrections.
-    Structure connue du PDF :
-      col 2  = Heure (21h, 01h...)
-      col 16 = T°C
-      col 17+18 = Temps sensible (parfois scindé)
-      col 20 = Pluie (%)
-      col 21 = Visibilité (km)
+    Lit le PDF bulletin Bénin Terminal.
+    Gere les decalages de colonnes entre pages et les valeurs "> 10".
     """
+    import pdfplumber, io, re, unicodedata
+
+    def norm(s):
+        s = unicodedata.normalize("NFKD", str(s or ""))
+        s = "".join(c for c in s if not unicodedata.combining(c))
+        return s.lower().replace("\n"," ").replace("\r"," ").strip()
+
+    def map_wx(text):
+        t = norm(text)
+        WX = [
+            (["ensoleill"],                        "Ensoleillé"),
+            (["peu nuageux"],                      "Peu nuageux"),
+            (["modere","modera","mode r","moderement"], "Modérément nuageux"),
+            (["assez nuageux"],                    "Assez nuageux"),
+            (["couvert"],                          "Couvert"),
+            (["orages et pluies","orages"],        "Orages et pluies"),
+            (["averses de fortes"],                "Averses de fortes pluies"),
+            (["averses"],                          "Averses de pluies faibles"),
+            (["poussi"],                           "Poussière"),
+            (["brume s","brume seche"],            "Brume sèche"),
+            (["brouillard","brume humide"],        "Brouillard/Brume humide"),
+        ]
+        for keys, val in WX:
+            if any(k in t for k in keys):
+                return val
+        return None
+
+    def safe_float(cell):
+        s = re.sub(r"[><>=<]", "", str(cell or "")).strip().replace(",",".")
+        try: return float(s)
+        except: return None
+
+    def is_wx(s):
+        t = norm(s)
+        return any(k in t for k in ["nuageux","pluies","orages","couvert",
+                                     "ensoleill","brume","poussi","averses"])
+
+    rows = []
     try:
-        import pdfplumber, io, re
-
-        def map_wx(text):
-            """Reconnaît le temps sensible même si le texte est fragmenté par pdfplumber."""
-            import unicodedata
-            # Normaliser : supprimer accents, minuscules, espaces/retours
-            def norm(s):
-                s = unicodedata.normalize("NFKD", str(s or ""))
-                s = "".join(c for c in s if not unicodedata.combining(c))
-                return s.lower().replace("\n"," ").replace("\r"," ").strip()
-            t = norm(text)
-            # Reconstituer les fragments courants du PDF
-            t = t.replace("as nua sez geux","assez nuageux")
-            t = t.replace("as\nnua sez\ngeux","assez nuageux")
-            t = t.replace("mode rément nuageux","moderement nuageux")
-            t = t.replace("mode nuageux","moderement nuageux")
-            t = t.replace("aver pluies ses de faibles","averses de pluies faibles")
-            t = t.replace("ora pl ges et uies","orages et pluies")
-            t = t.replace("ora","orages et pluies") if t == "ora" else t
-            WX_MAP = [
-                (["ensoleill"],                         "Ensoleillé"),
-                (["peu nuageux"],                       "Peu nuageux"),
-                (["moderement","modérément","mode r"],  "Modérément nuageux"),
-                (["assez nuageux","as nua"],             "Assez nuageux"),
-                (["couvert"],                            "Couvert"),
-                (["orages","ora "],                      "Orages et pluies"),
-                (["averses de fortes"],                  "Averses de fortes pluies"),
-                (["averses","aver"],                     "Averses de pluies faibles"),
-                (["poussi"],                             "Poussière"),
-                (["brume s","brume seche"],              "Brume sèche"),
-                (["brouillard","brume humide"],          "Brouillard/Brume humide"),
-            ]
-            for keys, val in WX_MAP:
-                if any(k in t for k in keys):
-                    return val
-            return None
-
-        def safe_float(cell):
-            try:
-                return float(str(cell or "").strip().replace(",","."))
-            except:
-                return None
-
-        rows = []
         with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
             for page in pdf.pages:
-                tables = page.extract_tables()
-                for table in tables:
+                for table in page.extract_tables():
                     for row in table:
                         if not row or len(row) < 18:
                             continue
-                        # Colonne 2 = heure
                         heure = str(row[2] or "").strip()
                         if not re.match(r"[0-9]{1,2}h", heure):
                             continue
 
-                        # T°C — col 16
-                        t_val = safe_float(row[16])
-                        if t_val is not None and not (15 <= t_val <= 45):
-                            t_val = None
+                        c16 = str(row[16] or "").strip()
+                        c17 = str(row[17] or "").strip()
+                        c18 = str(row[18] or "").strip()
 
-                        # Temps sensible — col 17 + 18 concaténés (fragmentés par pdfplumber)
-                        c17 = str(row[17] or "").replace("\n"," ").strip()
-                        c18 = str(row[18] or "None" if row[18] else "").replace("\n"," ").strip()
-                        wx_raw = (c17 + " " + c18).strip()
-                        wx_val = map_wx(wx_raw)
+                        t_val  = None
+                        wx_val = None
 
-                        # Pluie % — col 20
+                        t16 = safe_float(c16)
+                        t17 = safe_float(c17)
+
+                        if t16 is not None and 15 <= t16 <= 45 and not is_wx(c17):
+                            t_val  = t16
+                            wx_raw = (c17 + " " + c18).replace("\n"," ")
+                            wx_val = map_wx(wx_raw)
+                        elif t17 is not None and 15 <= t17 <= 45 and is_wx(c18):
+                            t_val  = t17
+                            wx_val = map_wx(c18.replace("\n"," "))
+                        elif c16 == "" and t17 is not None and 15 <= t17 <= 45:
+                            t_val  = t17
+                            wx_val = map_wx(c18.replace("\n"," "))
+                        else:
+                            t_val  = t16 if (t16 and 15 <= t16 <= 45) else None
+                            wx_raw = (c17 + " " + c18).replace("\n"," ")
+                            wx_val = map_wx(wx_raw)
+
                         pluie_val = safe_float(row[20]) if len(row) > 20 else None
                         if pluie_val is not None and not (0 <= pluie_val <= 100):
                             pluie_val = None
 
-                        # Visibilité — col 21
-                        vis_val = safe_float(row[21]) if len(row) > 21 else None
+                        vis_raw = str(row[21] or "").strip() if len(row) > 21 else ""
+                        vis_val = safe_float(vis_raw)
                         if vis_val is not None and not (1 <= vis_val <= 50):
                             vis_val = None
+                        if vis_val is None and "10" in vis_raw:
+                            vis_val = 10.0
 
                         if any(v is not None for v in [t_val, wx_val, pluie_val, vis_val]):
                             rows.append({
@@ -1786,49 +1788,9 @@ def read_bt_pdf_corrections(pdf_bytes):
 
         if not rows:
             return None, "Aucune donnée extraite du PDF"
-
         return pd.DataFrame(rows), None
-
     except Exception as e:
         return None, str(e)
-
-
-# Pictogrammes météo Sème (EN)
-SEME_WX_ICONS = {
-    "Sunny":            "☀️",
-    "Mostly sunny":     "🌤️",
-    "Partly cloudy":    "⛅",
-    "Mostly cloudy":    "🌥️",
-    "Cloudy":           "☁️",
-    "Overcast":         "☁️",
-    "Light rain":       "🌦️",
-    "Moderate rain":    "🌧️",
-    "Heavy rain":       "🌧️",
-    "Rain showers":     "🌦️",
-    "Thunderstorm":     "⛈️",
-    "Squally":          "🌩️",
-    "Mist":             "🌫️",
-    "Fog":              "🌁",
-    "Haze":             "🌫️",
-}
-
-# Pictogrammes temps sensible Bénin Terminal
-BT_WX_ICONS = {
-    "Ensoleillé":               "☀️",
-    "Peu nuageux":              "🌤️",
-    "Modérément nuageux":       "⛅",
-    "Assez nuageux":            "🌥️",
-    "Couvert":                  "☁️",
-    "Orages et pluies":         "⛈️",
-    "Averses de fortes pluies": "🌧️",
-    "Averses de pluies faibles":"🌦️",
-    "Poussière":                "🌫️",
-    "Brume sèche":              "🌫️",
-    "Brouillard/Brume humide":  "🌁",
-}
-
-BT_WX_LIST = list(BT_WX_ICONS.keys())
-
 
 def read_seme_pdf_corrections(pdf_bytes):
     """
@@ -2084,7 +2046,7 @@ def render_benin_terminal():
                 df_bt["Visibilite_km"] = df_bt["Visibilite_km"].fillna(10.0)
                 # NaN T°C → interpolation linéaire
                 df_bt["T(°C)"] = df_bt["T(°C)"].interpolate(
-                    method="linear", limit_direction="both")
+                    method="linear", limit_direction="both").clip(20, 35)
                 # NaN Visibilité → 10 km, NaN T°C → interpolation
                 df_bt["Visibilite_km"] = df_bt["Visibilite_km"].fillna(10.0)
                 df_bt["T(°C)"] = df_bt["T(°C)"].interpolate(method="linear", limit_direction="both")
@@ -2246,7 +2208,7 @@ def render_benin_terminal():
                 df_bt["Visibilite_km"] = df_bt["Visibilite_km"].fillna(10.0)
             if "T(°C)" in df_bt.columns:
                 df_bt["T(°C)"] = df_bt["T(°C)"].interpolate(
-                    method="linear", limit_direction="both")
+                    method="linear", limit_direction="both").clip(20, 35)
         elif user_role == "client":
             # Client : charger automatiquement le dernier CSV depuis GitHub
             import requests, io as _io

@@ -1942,9 +1942,17 @@ def publish_to_github(file_content: bytes, filename: str, folder: str, commit_ms
     """Publie un fichier sur GitHub via l'API."""
     import requests, base64
     try:
-        token = st.secrets.get("GITHUB_TOKEN", "")
-        if not token:
+        # Lire le token GitHub
+        token = ""
+        try:
+            token = st.secrets["GITHUB_TOKEN"]
+        except KeyError:
+            pass
+        except Exception:
+            pass
+        if not token or str(token).strip() == "":
             return False, "GITHUB_TOKEN non configuré dans Streamlit Secrets"
+        token = str(token).strip()
 
         headers = {
             "Authorization": f"token {token}",
@@ -2156,6 +2164,9 @@ def render_benin_terminal():
 
             # ÉTAPE 3
             st.markdown("**③ 🚀 Publier sur GitHub**")
+            # Debug token
+            _has_token = "GITHUB_TOKEN" in st.secrets
+            st.caption(f"🔑 Token: {'✅ présent' if _has_token else '❌ absent'} | Clés: {list(st.secrets.keys())}")
             if "bt_df" in st.session_state:
                 fname_bt = st.session_state.get("bt_fname",
                     f"ECMWF_Port_{pd.to_datetime(st.session_state['bt_df']['forecast_time_local']).min().strftime('%d%m%Y_%H00')}.csv")

@@ -2132,25 +2132,34 @@ def render_benin_terminal():
                 st.caption("📌 Publier dans `data/BeninTerminal/` sur GitHub")
             st.divider()
 
+        # Vérifier si nouveau bulletin disponible → vider cache si besoin
+        import requests as _req, io as _io
+        try:
+            tree_url = f"https://api.github.com/repos/{GITHUB_OWNER}/{GITHUB_REPO_BT}/contents/{GITHUB_FOLDER_TERMINAL}"
+            _r = _req.get(tree_url, timeout=5)
+            _all = sorted(
+                [(f["name"], f["download_url"]) for f in _r.json()
+                 if isinstance(f, dict) and f.get("name","").endswith(".csv")],
+                key=lambda x: x[0], reverse=True
+            )
+            _latest_name = _all[0][0] if _all else None
+            # Si nouveau fichier → invalider le cache
+            if _latest_name and _latest_name != st.session_state.get("bt_csv_loaded"):
+                st.session_state.pop("bt_df", None)
+                st.session_state["bt_csv_loaded"] = _latest_name
+        except Exception:
+            _all = []
+            _latest_name = None
+
         # Chargement données
         if "bt_df" in st.session_state:
             df_bt = st.session_state["bt_df"]
         elif user_role == "client":
             # Client : charger automatiquement le dernier CSV depuis GitHub
-            import requests, io as _io
             try:
-                # Utiliser l'API contents pour avoir les dates de commit
-                tree_url = f"https://api.github.com/repos/{GITHUB_OWNER}/{GITHUB_REPO_BT}/contents/{GITHUB_FOLDER_TERMINAL}"
-                r = requests.get(tree_url, timeout=10)
-                all_files = [(f["name"], f["download_url"])
-                             for f in r.json()
-                             if isinstance(f, dict) and f.get("name","").endswith(".csv")]
-                # Trier par nom de fichier décroissant (le plus récent en premier)
-                all_files = sorted(all_files, key=lambda x: x[0], reverse=True)
-                files = [f[0] for f in all_files]
-                if files:
-                    raw_url = all_files[0][1]  # download_url direct
-                    df_gh = pd.read_csv(_io.StringIO(requests.get(raw_url, timeout=15).text))
+                if _all and _latest_name:
+                    raw_url = _all[0][1]
+                    df_gh = pd.read_csv(_io.StringIO(_req.get(raw_url, timeout=15).text))
                     df_gh["forecast_time_local"] = pd.to_datetime(df_gh["forecast_time_local"])
                     for col, default in [("T(°C)", 28.0), ("Pluie(%)", 10.0),
                                          ("Visibilite_km", 9.0), ("Temps_sensible","Assez nuageux")]:
@@ -2158,11 +2167,11 @@ def render_benin_terminal():
                             df_gh[col] = default
                     st.session_state["bt_df"] = df_gh
                     df_bt = df_gh
-                    st.sidebar.success(f"✅ {files[0].replace('ECMWF_Port_','').replace('.csv','')}")
+                    st.sidebar.success(f"✅ {_latest_name.replace('ECMWF_Port_','').replace('.csv','')}")
                 else:
                     df_bt = bt_generate_demo()
                     is_demo = True
-            except Exception as e:
+            except Exception:
                 df_bt = bt_generate_demo()
                 is_demo = True
         else:

@@ -1938,49 +1938,6 @@ def read_seme_pdf_corrections(pdf_bytes):
         return None, str(e)
 
 
-def publish_to_github(file_content: bytes, filename: str, folder: str, commit_msg: str):
-    """Publie un fichier sur GitHub via l'API."""
-    import requests, base64
-    try:
-        # Lire le token GitHub
-        token = ""
-        try:
-            token = st.secrets["GITHUB_TOKEN"]
-        except KeyError:
-            pass
-        except Exception:
-            pass
-        if not token or str(token).strip() == "":
-            return False, "GITHUB_TOKEN non configuré dans Streamlit Secrets"
-        token = str(token).strip()
-
-        headers = {
-            "Authorization": f"token {token}",
-            "Accept": "application/vnd.github.v3+json",
-        }
-        path    = f"{folder}/{filename}"
-        api_url = f"https://api.github.com/repos/{GITHUB_OWNER}/{GITHUB_REPO_BT}/contents/{path}"
-
-        # Vérifier si le fichier existe déjà (pour récupérer son sha)
-        r_get = requests.get(api_url, headers=headers, timeout=10)
-        sha   = r_get.json().get("sha") if r_get.status_code == 200 else None
-
-        payload = {
-            "message": commit_msg,
-            "content": base64.b64encode(file_content).decode("utf-8"),
-        }
-        if sha:
-            payload["sha"] = sha
-
-        r_put = requests.put(api_url, headers=headers, json=payload, timeout=15)
-        if r_put.status_code in [200, 201]:
-            return True, filename
-        else:
-            return False, r_put.json().get("message", "Erreur inconnue")
-    except Exception as e:
-        return False, str(e)
-
-
 def check_bt_alerte():
     """
     Vérifie si un fichier ALERTE_*.pdf existe dans data/BeninTerminal/ sur GitHub.
@@ -2112,131 +2069,115 @@ def render_benin_terminal():
         st.divider()
         st.markdown("### ⚓ Bénin Terminal")
 
-        # ── Sidebar admin Bénin Terminal ─────────────────────────────────
+        # Upload CSV + PDF — admin uniquement
         if user_role == "admin":
-            # ÉTAPE 1
-            st.markdown("**① 📂 Charger le bulletin CSV**")
-            bt_file = st.file_uploader("CSV Bénin Terminal", type=["csv"], key="bt_uploader")
+            st.markdown("**📂 Bulletin CSV**")
+            bt_file = st.file_uploader("Charger CSV", type=["csv"], key="bt_uploader")
             if bt_file:
-                df_bt_up = pd.read_csv(bt_file)
-                df_bt_up["forecast_time_local"] = pd.to_datetime(df_bt_up["forecast_time_local"])
+                df_bt = pd.read_csv(bt_file)
+                df_bt["forecast_time_local"] = pd.to_datetime(df_bt["forecast_time_local"])
                 for col, default in [("T(°C)", 28.0), ("Pluie(%)", 10.0),
                                      ("Visibilite_km", 9.0), ("Temps_sensible","Assez nuageux")]:
-                    if col not in df_bt_up.columns:
-                        df_bt_up[col] = default
-                st.session_state["bt_df"] = df_bt_up
-                first_dt_up = df_bt_up["forecast_time_local"].min()
-                st.session_state["bt_fname"] = f"ECMWF_Port_{first_dt_up.strftime('%d%m%Y_%H00')}.csv"
-                st.success(f"✅ {len(df_bt_up)} échéances chargées")
+                    if col not in df_bt.columns:
+                        df_bt[col] = default
+                # NaN Visibilité → 10 km (bonne visibilité = case vide dans PDF)
+                df_bt["Visibilite_km"] = df_bt["Visibilite_km"].fillna(10.0)
+                # NaN T°C → interpolation linéaire
+                df_bt["T(°C)"] = df_bt["T(°C)"].interpolate(
+                    method="linear", limit_direction="both")
+                st.session_state["bt_df"] = df_bt
+                st.success(f"✅ {len(df_bt)} échéances chargées")
 
-            st.divider()
-
-            # ÉTAPE 2
-            st.markdown("**② 📄 Appliquer les corrections PDF**")
-            st.caption("T°C · Temps sensible · Pluie · Visibilité")
-            bt_pdf = st.file_uploader("PDF bulletin corrigé", type=["pdf"], key="bt_pdf_uploader")
+            st.markdown("**📄 PDF corrigé**")
+            st.caption("T°C, Temps sensible, Pluie, Visibilité")
+            bt_pdf = st.file_uploader("Charger PDF bulletin", type=["pdf"], key="bt_pdf_uploader")
             if bt_pdf and "bt_df" in st.session_state:
                 pdf_bytes = bt_pdf.read()
                 df_corr, err = read_bt_pdf_corrections(pdf_bytes)
                 if err:
-                    st.warning(f"⚠️ {err}")
+                    st.warning(f"⚠️ PDF : {err}")
                 elif df_corr is not None:
+                    # Appliquer corrections sur bt_df
                     df_base = st.session_state["bt_df"].copy()
                     n_corr = 0
                     for _, cr in df_corr.iterrows():
                         h_raw = str(cr.get("heure_str","")).strip().lower().replace("h","").zfill(2)
                         mask  = df_base["forecast_time_local"].dt.strftime("%H") == h_raw
                         if mask.any():
-                            for col_bt, key_bt in [("T(°C)","T(°C)"),("Temps_sensible","Temps_sensible"),
-                                                    ("Pluie(%)","Pluie(%)"),("Visibilite_km","Visibilite_km")]:
-                                try:
-                                    if cr.get(key_bt) is not None:
-                                        df_base.loc[mask, col_bt] = cr[key_bt]
-                                except Exception:
-                                    pass
+                            if cr["T(°C)"] is not None:
+                                df_base.loc[mask, "T(°C)"] = cr["T(°C)"]
+                            if cr["Temps_sensible"] is not None:
+                                df_base.loc[mask, "Temps_sensible"] = cr["Temps_sensible"]
+                            if cr["Pluie(%)"] is not None:
+                                df_base.loc[mask, "Pluie(%)"] = cr["Pluie(%)"]
+                            if cr["Visibilite_km"] is not None:
+                                df_base.loc[mask, "Visibilite_km"] = cr["Visibilite_km"]
                             n_corr += 1
                     st.session_state["bt_df"] = df_base
-                    st.success(f"✅ {n_corr} échéances corrigées")
+                    st.success(f"✅ {n_corr} échéances corrigées depuis PDF")
             elif bt_pdf and "bt_df" not in st.session_state:
-                st.warning("⚠️ Chargez d'abord le CSV (étape 1)")
+                st.warning("⚠️ Chargez d'abord le CSV avant le PDF")
 
-            st.divider()
-
-            # ÉTAPE 3
-            st.markdown("**③ 🚀 Publier sur GitHub**")
-            # Debug token
-            _has_token = "GITHUB_TOKEN" in st.secrets
-            st.caption(f"🔑 Token: {'✅ présent' if _has_token else '❌ absent'} | Clés: {list(st.secrets.keys())}")
+            # Bouton export CSV corrigé
             if "bt_df" in st.session_state:
-                fname_bt = st.session_state.get("bt_fname",
-                    f"ECMWF_Port_{pd.to_datetime(st.session_state['bt_df']['forecast_time_local']).min().strftime('%d%m%Y_%H00')}.csv")
-                st.caption(f"📄 `{fname_bt}`")
-                # Vérifier si corrections PDF appliquées
-                _has_wx = "Temps_sensible" in st.session_state["bt_df"].columns
-                _wx_ok  = st.session_state["bt_df"]["Temps_sensible"].notna().any() if _has_wx else False
-                if _wx_ok:
-                    st.success("✅ Corrections PDF appliquées")
-                else:
-                    st.warning("⚠️ Pas encore de corrections PDF")
-                col_pub, col_dl = st.columns(2)
-                with col_pub:
-                    if st.button("🚀 Publier", type="primary", use_container_width=True, key="bt_publish_btn"):
-                        df_pub = st.session_state["bt_df"].copy()
-                        df_pub["forecast_time_local"] = pd.to_datetime(
-                            df_pub["forecast_time_local"]).dt.strftime("%Y-%m-%d %H:%M")
-                        csv_bytes = df_pub.to_csv(index=False).encode("utf-8")
-                        ok, msg = publish_to_github(
-                            csv_bytes, fname_bt,
-                            GITHUB_FOLDER_TERMINAL,
-                            f"data: bulletin Bénin Terminal {fname_bt}"
-                        )
-                        if ok:
-                            st.success("✅ Publié ! Clients mis à jour.")
-                            st.session_state["bt_csv_loaded"] = fname_bt
-                        else:
-                            st.error(f"❌ {msg}")
-                with col_dl:
-                    df_dl = st.session_state["bt_df"].copy()
-                    df_dl["forecast_time_local"] = pd.to_datetime(
-                        df_dl["forecast_time_local"]).dt.strftime("%Y-%m-%d %H:%M")
-                    st.download_button("⬇️ CSV", data=df_dl.to_csv(index=False).encode("utf-8"),
-                        file_name=fname_bt, mime="text/csv",
-                        use_container_width=True, key="bt_dl_btn")
-            else:
-                st.caption("⚠️ Chargez d'abord le CSV (étape 1)")
+                df_exp_bt = st.session_state["bt_df"].copy()
+                df_exp_bt["forecast_time_local"] = pd.to_datetime(
+                    df_exp_bt["forecast_time_local"]).dt.strftime("%Y-%m-%d %H:%M")
+                first_dt_bt = pd.to_datetime(
+                    st.session_state["bt_df"]["forecast_time_local"]).min()
+                fname_bt = f"ECMWF_Port_{first_dt_bt.strftime('%d%m%Y_%H00')}.csv"
+                st.download_button(
+                    "⬇️ CSV corrigé (à publier)",
+                    data=df_exp_bt.to_csv(index=False).encode("utf-8"),
+                    file_name=fname_bt,
+                    mime="text/csv",
+                    type="primary",
+                    key="bt_export_btn",
+                )
+                st.caption("📌 Publier dans `data/BeninTerminal/` sur GitHub")
             st.divider()
-
 
         # Chargement données
-        import requests as _req, io as _io
         if "bt_df" in st.session_state:
-            # Données déjà en session (admin ou client déjà chargé)
             df_bt = st.session_state["bt_df"]
+            # Corriger NaN résiduels
+            if "Visibilite_km" in df_bt.columns:
+                df_bt["Visibilite_km"] = df_bt["Visibilite_km"].fillna(10.0)
+            if "T(°C)" in df_bt.columns:
+                df_bt["T(°C)"] = df_bt["T(°C)"].interpolate(
+                    method="linear", limit_direction="both")
         elif user_role == "client":
-            # Client : charger le dernier CSV depuis GitHub au démarrage de session
+            # Client : charger automatiquement le dernier CSV depuis GitHub
+            import requests, io as _io
             try:
+                # Utiliser l'API contents pour avoir les dates de commit
                 tree_url = f"https://api.github.com/repos/{GITHUB_OWNER}/{GITHUB_REPO_BT}/contents/{GITHUB_FOLDER_TERMINAL}"
-                _r = _req.get(tree_url, timeout=10)
-                _all = sorted(
-                    [(f["name"], f["download_url"]) for f in _r.json()
-                     if isinstance(f, dict) and f.get("name","").endswith(".csv")],
-                    key=lambda x: x[0], reverse=True
-                )
-                if _all:
-                    raw_url = _all[0][1]
-                    df_gh = pd.read_csv(_io.StringIO(_req.get(raw_url, timeout=15).text))
+                r = requests.get(tree_url, timeout=10)
+                all_files = [(f["name"], f["download_url"])
+                             for f in r.json()
+                             if isinstance(f, dict) and f.get("name","").endswith(".csv")]
+                # Trier par nom de fichier décroissant (le plus récent en premier)
+                all_files = sorted(all_files, key=lambda x: x[0], reverse=True)
+                files = [f[0] for f in all_files]
+                if files:
+                    raw_url = all_files[0][1]  # download_url direct
+                    df_gh = pd.read_csv(_io.StringIO(requests.get(raw_url, timeout=15).text))
                     df_gh["forecast_time_local"] = pd.to_datetime(df_gh["forecast_time_local"])
                     for col, default in [("T(°C)", 28.0), ("Pluie(%)", 10.0),
                                          ("Visibilite_km", 9.0), ("Temps_sensible","Assez nuageux")]:
                         if col not in df_gh.columns:
                             df_gh[col] = default
+                    # NaN Visibilité → 10 km, NaN T°C → interpolation
+                    df_gh["Visibilite_km"] = df_gh["Visibilite_km"].fillna(10.0)
+                    df_gh["T(°C)"] = df_gh["T(°C)"].interpolate(
+                        method="linear", limit_direction="both")
                     st.session_state["bt_df"] = df_gh
                     df_bt = df_gh
-                    st.sidebar.success(f"✅ {_all[0][0].replace('ECMWF_Port_','').replace('.csv','')}")
+                    st.sidebar.success(f"✅ {files[0].replace('ECMWF_Port_','').replace('.csv','')}")
                 else:
                     df_bt = bt_generate_demo()
                     is_demo = True
-            except Exception:
+            except Exception as e:
                 df_bt = bt_generate_demo()
                 is_demo = True
         else:
@@ -2247,11 +2188,9 @@ def render_benin_terminal():
         df_bt["forecast_time_local"] = pd.to_datetime(df_bt["forecast_time_local"])
         times  = sorted(df_bt["forecast_time_local"].dt.to_pydatetime().tolist())
         dt_min = times[0]; dt_max = times[-1]
-
-        # Défaut : à partir de maintenant (pas de temps le plus proche)
-        _now = now_local()
-        _future = [t for t in times if t >= _now]
-        _def_start = _future[0] if _future else dt_min
+        _19h   = dt_min.replace(hour=19, minute=0, second=0, microsecond=0)
+        _19h_times = [t for t in times if t >= _19h]
+        _def_start = _19h_times[0] if _19h_times else dt_min
 
         st.markdown("#### 🕐 Période")
         show_past = st.toggle("Voir les échéances passées", value=False, key="bt_show_past")
@@ -2352,7 +2291,7 @@ def render_benin_terminal():
         fig_meteo = go.Figure()
 
         # Interpoler les valeurs manquantes T°C
-        t_series = df_f["T(°C)"].copy().interpolate(method="linear", limit_direction="both")
+        t_series = df_f["T(°C)"].copy().interpolate(method="linear", limit_direction="both").fillna(method="bfill").fillna(method="ffill")
 
         # Courbe température
         fig_meteo.add_trace(go.Scatter(
@@ -2402,10 +2341,13 @@ def render_benin_terminal():
         # ── Pluie + Visibilité combinées ─────────────────────────────────
         if "Visibilite_km" in df_f.columns:
             fig_pv = make_subplots(specs=[[{"secondary_y": True}]])
+            # Interpoler les NaN
+            _vis = df_f["Visibilite_km"].copy().interpolate(method="linear", limit_direction="both")
+            _pluie = df_f[pluie_col].copy().fillna(0)
 
             # Barres visibilité (axe gauche)
             fig_pv.add_trace(go.Bar(
-                x=x, y=df_f["Visibilite_km"],
+                x=x, y=_vis,
                 name="Visibilité (km)",
                 marker_color="rgba(169,204,227,0.7)",
                 marker_line_width=0,
@@ -2413,7 +2355,7 @@ def render_benin_terminal():
 
             # Courbe probabilité de pluie (axe droit)
             fig_pv.add_trace(go.Scatter(
-                x=x, y=df_f[pluie_col],
+                x=x, y=_pluie,
                 name="Pluie (%)",
                 line=dict(color="#4FC3F7", width=2.5),
                 mode="lines+markers", marker=dict(size=6),
@@ -2432,11 +2374,12 @@ def render_benin_terminal():
             fig_pv.update_yaxes(
                 title_text="Visibilité (km)", secondary_y=False,
                 gridcolor="#2a2a3a", color="#A9CCE3",
+                range=[0, (_vis.max() or 15) * 1.3],
             )
             fig_pv.update_yaxes(
                 title_text="Pluie (%)", secondary_y=True,
                 color="#4FC3F7", gridcolor="rgba(0,0,0,0)",
-                range=[0, (df_f[pluie_col].max() or 100) * 1.3],
+                range=[0, (_pluie.max() or 100) * 1.3],
             )
             st.plotly_chart(fig_pv, use_container_width=True)
 

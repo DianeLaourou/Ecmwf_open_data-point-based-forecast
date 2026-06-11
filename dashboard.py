@@ -1938,6 +1938,41 @@ def read_seme_pdf_corrections(pdf_bytes):
         return None, str(e)
 
 
+def publish_to_github(file_content: bytes, filename: str, folder: str, commit_msg: str):
+    """Publie un fichier sur GitHub via l'API."""
+    import requests, base64
+    try:
+        token = ""
+        try:
+            token = st.secrets["GITHUB_TOKEN"]
+        except Exception:
+            pass
+        if not token or str(token).strip() == "":
+            return False, "GITHUB_TOKEN non configuré dans Streamlit Secrets"
+        token = str(token).strip()
+        headers = {
+            "Authorization": f"token {token}",
+            "Accept": "application/vnd.github.v3+json",
+        }
+        path    = f"{folder}/{filename}"
+        api_url = f"https://api.github.com/repos/{GITHUB_OWNER}/{GITHUB_REPO_BT}/contents/{path}"
+        r_get = requests.get(api_url, headers=headers, timeout=10)
+        sha   = r_get.json().get("sha") if r_get.status_code == 200 else None
+        payload = {
+            "message": commit_msg,
+            "content": base64.b64encode(file_content).decode("utf-8"),
+        }
+        if sha:
+            payload["sha"] = sha
+        r_put = requests.put(api_url, headers=headers, json=payload, timeout=15)
+        if r_put.status_code in [200, 201]:
+            return True, filename
+        else:
+            return False, r_put.json().get("message", "Erreur inconnue")
+    except Exception as e:
+        return False, str(e)
+
+
 def check_bt_alerte():
     """
     Vérifie si un fichier ALERTE_*.pdf existe dans data/BeninTerminal/ sur GitHub.
@@ -2085,6 +2120,9 @@ def render_benin_terminal():
                 # NaN T°C → interpolation linéaire
                 df_bt["T(°C)"] = df_bt["T(°C)"].interpolate(
                     method="linear", limit_direction="both")
+                # NaN Visibilité → 10 km, NaN T°C → interpolation
+                df_bt["Visibilite_km"] = df_bt["Visibilite_km"].fillna(10.0)
+                df_bt["T(°C)"] = df_bt["T(°C)"].interpolate(method="linear", limit_direction="both")
                 st.session_state["bt_df"] = df_bt
                 st.success(f"✅ {len(df_bt)} échéances chargées")
 
@@ -2119,22 +2157,46 @@ def render_benin_terminal():
                 st.warning("⚠️ Chargez d'abord le CSV avant le PDF")
 
             # Bouton export CSV corrigé
+            # ÉTAPE 3 — Publier sur GitHub
+            st.markdown("**③ 🚀 Publier sur GitHub**")
             if "bt_df" in st.session_state:
-                df_exp_bt = st.session_state["bt_df"].copy()
-                df_exp_bt["forecast_time_local"] = pd.to_datetime(
-                    df_exp_bt["forecast_time_local"]).dt.strftime("%Y-%m-%d %H:%M")
                 first_dt_bt = pd.to_datetime(
                     st.session_state["bt_df"]["forecast_time_local"]).min()
                 fname_bt = f"ECMWF_Port_{first_dt_bt.strftime('%d%m%Y_%H00')}.csv"
-                st.download_button(
-                    "⬇️ CSV corrigé (à publier)",
-                    data=df_exp_bt.to_csv(index=False).encode("utf-8"),
-                    file_name=fname_bt,
-                    mime="text/csv",
-                    type="primary",
-                    key="bt_export_btn",
-                )
-                st.caption("📌 Publier dans `data/BeninTerminal/` sur GitHub")
+                # Vérifier corrections PDF
+                _has_wx = "Temps_sensible" in st.session_state["bt_df"].columns
+                _wx_ok  = st.session_state["bt_df"]["Temps_sensible"].notna().any() if _has_wx else False
+                if _wx_ok:
+                    st.success("✅ Corrections PDF appliquées")
+                else:
+                    st.warning("⚠️ Pas encore de corrections PDF")
+                st.caption(f"📄 `{fname_bt}`")
+                col_pub, col_dl = st.columns(2)
+                with col_pub:
+                    if st.button("🚀 Publier", type="primary", use_container_width=True, key="bt_publish_btn"):
+                        df_pub = st.session_state["bt_df"].copy()
+                        df_pub["forecast_time_local"] = pd.to_datetime(
+                            df_pub["forecast_time_local"]).dt.strftime("%Y-%m-%d %H:%M")
+                        csv_bytes = df_pub.to_csv(index=False).encode("utf-8")
+                        ok, msg = publish_to_github(
+                            csv_bytes, fname_bt,
+                            GITHUB_FOLDER_TERMINAL,
+                            f"data: bulletin Bénin Terminal {fname_bt}"
+                        )
+                        if ok:
+                            st.success("✅ Publié ! Clients mis à jour.")
+                            st.session_state["bt_csv_loaded"] = fname_bt
+                        else:
+                            st.error(f"❌ {msg}")
+                with col_dl:
+                    df_dl = st.session_state["bt_df"].copy()
+                    df_dl["forecast_time_local"] = pd.to_datetime(
+                        df_dl["forecast_time_local"]).dt.strftime("%Y-%m-%d %H:%M")
+                    st.download_button("⬇️ CSV", data=df_dl.to_csv(index=False).encode("utf-8"),
+                        file_name=fname_bt, mime="text/csv",
+                        use_container_width=True, key="bt_dl_btn")
+            else:
+                st.caption("⚠️ Chargez d'abord le CSV (étape 1)")
             st.divider()
 
         # Chargement données
@@ -2171,6 +2233,8 @@ def render_benin_terminal():
                     df_gh["Visibilite_km"] = df_gh["Visibilite_km"].fillna(10.0)
                     df_gh["T(°C)"] = df_gh["T(°C)"].interpolate(
                         method="linear", limit_direction="both")
+                    df_gh["Visibilite_km"] = df_gh["Visibilite_km"].fillna(10.0)
+                    df_gh["T(°C)"] = df_gh["T(°C)"].interpolate(method="linear", limit_direction="both")
                     st.session_state["bt_df"] = df_gh
                     df_bt = df_gh
                     st.sidebar.success(f"✅ {files[0].replace('ECMWF_Port_','').replace('.csv','')}")

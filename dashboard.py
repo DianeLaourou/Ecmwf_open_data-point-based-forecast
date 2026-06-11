@@ -2200,32 +2200,22 @@ def render_benin_terminal():
             st.divider()
 
 
-        # Vérifier si nouveau bulletin disponible → vider cache si besoin
-        import requests as _req, io as _io
-        try:
-            tree_url = f"https://api.github.com/repos/{GITHUB_OWNER}/{GITHUB_REPO_BT}/contents/{GITHUB_FOLDER_TERMINAL}"
-            _r = _req.get(tree_url, timeout=5)
-            _all = sorted(
-                [(f["name"], f["download_url"]) for f in _r.json()
-                 if isinstance(f, dict) and f.get("name","").endswith(".csv")],
-                key=lambda x: x[0], reverse=True
-            )
-            _latest_name = _all[0][0] if _all else None
-            # Si nouveau fichier → invalider le cache
-            if _latest_name and _latest_name != st.session_state.get("bt_csv_loaded"):
-                st.session_state.pop("bt_df", None)
-                st.session_state["bt_csv_loaded"] = _latest_name
-        except Exception:
-            _all = []
-            _latest_name = None
-
         # Chargement données
+        import requests as _req, io as _io
         if "bt_df" in st.session_state:
+            # Données déjà en session (admin ou client déjà chargé)
             df_bt = st.session_state["bt_df"]
         elif user_role == "client":
-            # Client : charger automatiquement le dernier CSV depuis GitHub
+            # Client : charger le dernier CSV depuis GitHub au démarrage de session
             try:
-                if _all and _latest_name:
+                tree_url = f"https://api.github.com/repos/{GITHUB_OWNER}/{GITHUB_REPO_BT}/contents/{GITHUB_FOLDER_TERMINAL}"
+                _r = _req.get(tree_url, timeout=10)
+                _all = sorted(
+                    [(f["name"], f["download_url"]) for f in _r.json()
+                     if isinstance(f, dict) and f.get("name","").endswith(".csv")],
+                    key=lambda x: x[0], reverse=True
+                )
+                if _all:
                     raw_url = _all[0][1]
                     df_gh = pd.read_csv(_io.StringIO(_req.get(raw_url, timeout=15).text))
                     df_gh["forecast_time_local"] = pd.to_datetime(df_gh["forecast_time_local"])
@@ -2235,7 +2225,7 @@ def render_benin_terminal():
                             df_gh[col] = default
                     st.session_state["bt_df"] = df_gh
                     df_bt = df_gh
-                    st.sidebar.success(f"✅ {_latest_name.replace('ECMWF_Port_','').replace('.csv','')}")
+                    st.sidebar.success(f"✅ {_all[0][0].replace('ECMWF_Port_','').replace('.csv','')}")
                 else:
                     df_bt = bt_generate_demo()
                     is_demo = True

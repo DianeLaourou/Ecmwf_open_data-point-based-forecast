@@ -44,10 +44,7 @@ def _default_users():
     return {
         "diane":    {"name":"LAOUROU MAKONDJOU DIANE",
                      "hash":"841fccf7e520761479132298008eb9342d88c7650d2e9a96f593e47720df8d00",
-                     "role":"admin","points":["seme","terminal"]},
-        "wapco":    {"name":"Opérateur WAPCO",
-                     "hash":"16eb9e9150beff2ff4c688a8c4655f416410c6e224b9e219a72de82e38b1db3c",
-                     "role":"client","points":["seme"]},
+                     "role":"admin","points":["terminal"]},
         "terminal": {"name":"Opérateur Bénin Terminal",
                      "hash":"ee6cdf0e70179451a50180d326ba13ab6689e84d1b856fe0e21717b220fb44a2",
                      "role":"client","points":["terminal"]},
@@ -107,7 +104,7 @@ GITHUB_FOLDER_TERMINAL = "data/BeninTerminal"
 # CONFIG PAGE
 # ─────────────────────────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="Marine Forecast — Sème | METEO-BENIN",
+    page_title="Bénin Terminal — Prévisions Port de Cotonou",
     page_icon="data:image/png;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/4gHYSUNDX1BST0ZJTEUAAQEAAAHIAAAAAAQwAABtbnRyUkdCIFhZWiAH4AABAAEAAAAAAABhY3NwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAA9tYAAQAAAADTLQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAlkZXNjAAAA8AAAACRyWFlaAAABFAAAABRnWFlaAAABKAAAABRiWFlaAAABPAAAABR3dHB0AAABUAAAABRyVFJDAAABZAAAAChnVFJDAAABZAAAAChiVFJDAAABZAAAAChjcHJ0AAABjAAAADxtbHVjAAAAAAAAAAEAAAAMZW5VUwAAAAgAAAAcAHMAUgBHAEJYWVogAAAAAAAAb6IAADj1AAADkFhZWiAAAAAAAABimQAAt4UAABjaWFlaIAAAAAAAACSgAAAPhAAAts9YWVogAAAAAAAA9tYAAQAAAADTLXBhcmEAAAAAAAQAAAACZmYAAPKnAAANWQAAE9AAAApbAAAAAAAAAABtbHVjAAAAAAAAAAEAAAAMZW5VUwAAACAAAAAcAEcAbwBvAGcAbABlACAASQBuAGMALgAgADIAMAAxADb/2wBDAAUDBAQEAwUEBAQFBQUGBwwIBwcHBw8LCwkMEQ8SEhEPERETFhwXExQaFRERGCEYGh0dHx8fExciJCIeJBweHx7/2wBDAQUFBQcGBw4ICA4eFBEUHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh7/wAARCABIAGcDASIAAhEBAxEB/8QAHAAAAgIDAQEAAAAAAAAAAAAAAAcFBgECBAMI/8QAPRAAAQMEAAQEBAMFBQkAAAAAAQIDBAAFBhEHEiExE0FRYRQiMnEWgZEVQlJisQgXI0OiJCVTcoKDobKz/8QAGwEBAAIDAQEAAAAAAAAAAAAAAAIDAQQGBQf/xAAjEQACAgEFAAEFAAAAAAAAAAAAAQIDEQQFEiExQQYTFVFx/9oADAMBAAIRAxEAPwD7LoorBIHc96AzRVFyriXZbTdVWC1sTclyIDrbLSjxVt+hdX9DI91kfaopcTi3kKFO3G+WnB4Oifh7eyJ0vl/mec02k/8AKk/c0AzFLISVa6ffVRs7JLBbz/vC+WqH7PzG0f1NLuRwxxN1xf4huGR5NLDXip/al3eKVjzAbQUo17arrgYNwvghxcXBscIDSHEqMFC+YKOu6gfPVaktbRGWHImoNlwRmmHOKCG8ssK1HsE3Fon/ANqlYk6JLG4sqPIHq06Ff0qrtYLw7fW4z+CsaJSAF6tjPQny+nvUVP4P8LHCVpxOBCcJ0HYK1xV79lNKSa2IzUllEBihW1aIIrNLBvh1dLYsHDOI+S2so+mJcFpuMbXpyu/OB9l1lzLeIGKA/jPFEXi3p+u7Y4VOlsfxORVfOB68hVUwM6iobE8lsWUWpN1sF3i3KGrp4jK98p80qHdKvYgGpmgCiiigMLPKknp09aU0y8XvildH7Zitxfs2GxXSxOvkfpIuS0khbMRX7qARpT3mdhPrUjxhkzrrKtHDq0ynY0rI3F/HPtq0uPbm9GQoEdlL2lsH+c+lXyyWyDaLVGtduhtRIURpLMdhsaS2hI0Ej8qA4MVxWxYrakWzH7cxAiDqtDafmdX5rWs/MtR8yokmvHILqzD0j4tplwb228hRS4n2IqwOa5OtUjLpT6VLbYmznCglSmkBLSGx5lTyh0A/WtDcZuFLa9LakpSSZBu3EvPpZYWlCN86T4pW2gjqFIV3A7gpNbSVKZjrV8WhwaKfDA0SFL5ike5OgPSqDKu70e6SFFfiIWByq5ubm996G/vXLcrzKlxwyytaFhQWlaT1Tr2r5DLXXz1+LHiGe2df+Jao5V9vA0Yl8CCpp2V4S0rU48Ak/M4ry9dJH6muZF1uUuQW2JDTqGBypdUoISQfv50sYVoya7qD0PmkknS9uBJSR67PT2rF7YzPG3ExJ0J5IcTzpWghSFb/AJh0r7Htq08qE6JZWPk4vUq2qxxmsMZsPKlwJi/i3CJKNpKD1GvX335Vc8Ov7OQQXXG1APMr5HNH9CPY0hLfj2bX1gT49uecaUQgKUQgE+29bHvTl4S4rNxqzvqubyFz5jiXHUtnaGgBoIB8/PZreko46ZVByz2cuZ8OGX7mrKcMmJxnKgOstlH+zzdf5cpodHEn+L6hvYNd3DjNl5EJdnvFu/Y+UWopRc7apfME7+l5pX+YyvqUq/I9RVzKQdbAOu1LfjVaZcOPG4h2BlX7cxkF5SUdDNg95EZXqCkFafRSRrvVZaMmiuSzTo1ztUW5QnQ7ElsofYWP3kLSFJP6GigKFbB8R/aQvTj3UwcYitMb8g7IdUvX5tppkUss2dGLcY8ay54hNsu8dWPTnD0Sy6pfiRlKPoVhSNnzWPWmYlQUNigBY2NVWcygB+KC8ZEptPzNwkJHK84PpCz/AA70dHpVnJAGzXi8Ukbqq6tWQcWZjLi8iRvFmWLkpEpsS30uIjuuOdS46UeIsgj6UpHRKR3rlbaYTH21CZhoUhpZfUSoNpcB5Fq/l2AD6bpxO2aIp+KUJCW2HlSOQDZW4oEcxJ+5rit2MtRRBXpBMfxUOAjoppZJ8PR7pBI6H0rkNT9K03282j2K93tjBRKXj1iWZKWnIMRUhtHifCzo+yU76+E8k6WnfUbB10r1M/KIfFiNbTbW4uHx4rinFLHyIJTsOLWrp0OwEjt3piWy3x4MRiOkFSI4UGif3Uk9h7eVc+U2WJkWPyrPM5gxJRyL0ffp9+tdVt2lhpYcMdeHi66dl75J9p5/ovstZyXNbhjF6w27tOWBmUl5YSvlbcKHCCpXmpOgdD1pssjY3uq5w/xiHh2OM2GE846y0pa+ZzuVKOz0HRI69hVkSpAGugrdsmnhLxGvRW45lL1m9ecphuTGdjvJCm3UFCwfMEaIr0qn8XMk/C2C3O5tBTk9xAiW6Ok6U/Kd+RlA9SVEHp2AJ8qgbJG/2cHFucE8aStRPgsOMIJ/gbdWhH+lIoqw8Nsf/CuB2THCoLXb4TbLix++4E/Or81En86KA6cwsFryTHJ1lvLCpEGY14bqAdKHXYUk+SknRB8iBVIwnLbnjt3Z4f588kXXXLaLwscrN5aT2+bsmSBrmQe5+ZOwejPqHy7GrLlVndtF/trNwguaJacH0qHZSSOqVDyUNEUBKr6t9qV+Z5jllpu2SRrTaWJseFEQuO+pWhGcLRWoujupGh01130rZu38R8BRyWt1eeY+39EWU8lq6Rk+iXT8j4A8l8qvc1IWPifgdymOW6fLFhuro5Xrfe45hvnQ7f4mkr/6SRWU8ekZJtdPBXk5bkz0TJXWrzFjP2tKlxm1R0L50oSkq2Obm7q67Gh01W1yzPJbNcbhGkXGJM+DtrLwCo6Gw444N85AVzcqR8xCQRpJ2RTRbhW1SlyGYcVSnk6W4lpJ8Qe5HcVlcC3qk/ELhxy8E8odLQKgn03317VPlH9FX2p49KVY8gunxN7iuXOHemoVvTLanx2wlIWUq22oJJSfpChrro9aq+OZ9f7nIsbEi4xGPiFO/FrDSBzBPhcoG1cvZZHybPbp3pvRYEGKwWIkOPHZJJLbTQSkk9+g6da0/ZdsCWkC2RQljq0nwE/4Z9U9On5UUo/KEq5vxioj8RL+LdHYmNR49y+EXK34ZLchrxW0IcR6aClBSfJQ96m8ZzK7SMog2K6sNtOPzZaWHko+SSw3zAaPZLiSAFD0IPnVvyK6YtYIfxd+nWm2MNg6XLcQ2AO5A5v6CqSriIi/rS1w1xGVkq0qPJcXmzCt7RPdXjLG1/8AbSd+tY5LHgjXJPtjByW+WrHLNIvN7uEe3wIyeZ599WkpHp7k+QHUnoKX+JQrnnuWRM+yGE/b7PB5jjdpkJ5XNqGjNfT5OKSdISfpSST1Nddm4cyrhdo+R8Q7o3kd3jq8SJES2UW63q9WWj9Sx/xF7PpqmKgEJHN3qBeCEBO9edFbUUAUUUUAEbHnUffLHZr7DVDvdqhXKOru1KYS6n9FA0UUBSFcGcOir8TH3b9jS99rPdXmED38PmKP9NaJ4d5VHHLbeLuWtI7alMxZJ191t7/OiigM/gTPfPjJfyPPVqhA/wDzo/uukyk6vXEfOrgk9FNouCYyFD3DSEn/AM0UUBJWLhNw+s8pM1nGosucnr8XcFKlvE+vO6VHfvVzDSAEgbCU9kjoBRRQHpRRRQBRRRQH/9k=",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -931,45 +928,22 @@ def render_sidebar():
 
         st.divider()
 
-        # ── Sélecteur de point (admin uniquement) ─────────────
-        if len(user_points) > 1:
-            point_choice = st.radio(
-                "📍 Point de prévision",
-                ["🌊 Sème", "⚓ Cotonou"],
-                horizontal=True,
-                key="point_radio",
-            )
-            st.session_state["point"] = "terminal" if "Cotonou" in point_choice else "seme"
-        else:
-            # Client : afficher son point sans option de changement
-            pt_label = "⚓ Cotonou" if user_points[0]=="terminal" else "🌊 Sème"
-            st.markdown(f"**📍 Point :** {pt_label}")
+        # Point fixe : Bénin Terminal
+        st.markdown("**📍 Point :** ⚓ Port de Cotonou")
 
         st.divider()
 
         # ── Contenu sidebar selon le point actif ──────────────
-        _active_point = st.session_state.get("point", "seme")
+        # Sidebar Bénin Terminal uniquement — contenu géré dans render_benin_terminal()
+        return {
+            "run_date": None, "run_hour": 0,
+            "swh_source": "ecmwf", "selected_vars": [],
+            "time_start": datetime.now(), "time_end": datetime.now(),
+            "show_markers": True, "show_thresholds": True,
+            "chart_type": "lines",
+        }
 
-        if _active_point == "terminal":
-            # Sidebar Bénin Terminal — géré dans render_benin_terminal()
-            # Ici on n'affiche rien de spécifique à Sème
-            run_date, run_hour, swh_source = None, 0, "ecmwf"
-            selected_vars = []
-            time_start = datetime.now()
-            time_end   = datetime.now()
-            show_markers = True
-            show_thresholds = True
-            chart_type = "lines"
-            return {
-                "run_date": run_date, "run_hour": run_hour,
-                "swh_source": swh_source, "selected_vars": selected_vars,
-                "time_start": time_start, "time_end": time_end,
-                "show_markers": show_markers,
-                "show_thresholds": show_thresholds,
-                "chart_type": chart_type,
-            }
-
-        # ── Sidebar Sème/WAPCO uniquement ─────────────────────
+        # ── Sidebar Sème (désactivée) ──────────────────────────
         st.markdown(f"## {T('settings')}")
 
         # Source de données
@@ -1450,11 +1424,10 @@ def main():
 
     user_role   = st.session_state.get("user_role", "client")
     user_name   = st.session_state.get("user_name", "")
-    user_points = st.session_state.get("user_points", ["seme"])
+    user_points = st.session_state.get("user_points", ["terminal"])
 
-    # Forcer le point si client avec un seul point
-    if len(user_points) == 1:
-        st.session_state["point"] = user_points[0]
+    # Toujours forcer le point terminal
+    st.session_state["point"] = "terminal"
 
     if "lang" not in st.session_state:
         st.session_state["lang"] = "FR"
@@ -1485,17 +1458,9 @@ def main():
 
     params = render_sidebar()
 
-    # ── Routage selon le point sélectionné ───────────────────
-    if st.session_state.get("point") == "terminal":
-        if "terminal" in user_points:
-            render_benin_terminal()
-        else:
-            st.error("❌ Accès non autorisé à ce point.")
-        return
-
-    if "seme" not in user_points:
-        st.error("❌ Accès non autorisé à ce point.")
-        return
+    # ── Routage direct vers Bénin Terminal ───────────────────
+    render_benin_terminal()
+    return
 
     # (données déjà chargées ci-dessus)
 

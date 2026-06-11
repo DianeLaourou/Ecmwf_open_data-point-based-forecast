@@ -2355,7 +2355,7 @@ def render_benin_terminal():
         fig_meteo = go.Figure()
 
         # Interpoler les valeurs manquantes T°C
-        t_series = df_f["T(°C)"].copy().interpolate(method="linear", limit_direction="both").fillna(method="bfill").fillna(method="ffill")
+        t_series = df_f["T(°C)"].copy().interpolate(method="linear", limit_direction="both").bfill().ffill()
 
         # Courbe température
         fig_meteo.add_trace(go.Scatter(
